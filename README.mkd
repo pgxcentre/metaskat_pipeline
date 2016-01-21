@@ -1,0 +1,42 @@
+# A python script to automatically run MetaSKAT
+
+`compute_lambda.py` is small script to execute a MetaSKAT analysis on different
+cohort.
+
+
+## Dependencies
+
+The tool requires a standard [Python](http://python.org/) installation (version
+2 or 3) with the following packages:
+
+1. [pandas](http://pandas.pydata.org/) version 0.17 or latest
+2. [rpy2](https://bitbucket.org/rpy2/) version 2.7.7 or latest
+3. [PyYAML](http://pyyaml.org/) version 3.11 or latest
+
+The tool has been tested on *Linux* only, but should also work on both Mac OSX
+and Windows.
+
+
+## Usage
+
+Using either `python` or `python3`:
+
+```console
+$ python run_metaskat.py --help
+usage: run_metaskat.py [-h] [-v] -c YAML -g FILE [-o DIR]
+
+Automatically execute MetaSKAT on multiple cohorts (using rpy2).
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -v, --version         show program's version number and exit
+
+INPUT OPTIONS:
+  -c YAML, --conf YAML  The YAML file containing the information about the
+                        cohorts.
+  -g FILE, --gene-list FILE
+                        The gene list (with markers) required by MetaSKAT
+
+OUTPUT OPTIONS:
+  -o DIR, --output DIR  The output directory [metaskat_output]
+```
