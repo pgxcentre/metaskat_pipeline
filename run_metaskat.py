@@ -145,15 +145,15 @@ def generate_meta_files(cohorts, genes, out_dir):
     meta_hom = metaskat.MetaSKAT_MSSD_ALL(**{
         "Cohort.Info": meta_cohort_info,
         "combined.weight": True,
-        "weights.beta": np.array([1,25]),
-        "method" : "davies",
+        "weights.beta": np.array([1, 25]),
+        "method": "davies",
         "r.corr": 0,
         "is.separate": False,
         "Group_Idx": robjects.r("NULL"),
         "MAF.cutoff": 5,
     })
 
-    meta_hom.to_csvfile(os.path.join(out_dir, "metaSKAT.homo.txt"), 
+    meta_hom.to_csvfile(os.path.join(out_dir, "metaSKAT.homo.txt"),
                         quote=False, sep="\t", row_names=False, col_names=True)
 
     meta_het = metaskat.MetaSKAT_MSSD_ALL(**{
@@ -167,7 +167,7 @@ def generate_meta_files(cohorts, genes, out_dir):
         "MAF.cutoff": 5,
     })
 
-    meta_het.to_csvfile(os.path.join(out_dir, "metaSKAT.hetero.txt"), 
+    meta_het.to_csvfile(os.path.join(out_dir, "metaSKAT.hetero.txt"),
                         quote=False, sep="\t", row_names=False, col_names=True)
 
     # Printing final results per cohort
@@ -176,9 +176,10 @@ def generate_meta_files(cohorts, genes, out_dir):
         name = cohort + "_info"
         name = meta_cohort_info[meta_cohort_info.names.index("EachInfo")][i]
         name = name[name.names.index("Info")]
-        name.to_csvfile(os.path.join(out_dir, cohort + ".MetaInfo.txt"), 
-                                     sep="\t", quote=False, row_names=False)
+        name.to_csvfile(os.path.join(out_dir, cohort + ".MetaInfo.txt"),
+                        sep="\t", quote=False, row_names=False)
         i = i + 1
+
 
 def read_cohort_configuration(fn):
     """Reads the cohort information using YAML.
