@@ -21,5 +21,9 @@ install:
   - "conda install -q numpy"
   - "conda install -q pandas"
   - "conda install mock"
+  - "pip install coveralls"
   - "conda list"
-script: "python test_metaskat.py"
+script:
+    - "python test_metaskat.py"
+after_success:
+    - "coveralls"
