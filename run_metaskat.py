@@ -56,6 +56,9 @@ def generate_meta_files(cohorts, genes, out_dir):
     """Generating the SKAT meta files."""
     logger.info("Generating the meta files")
 
+    list_mssd = []
+    list_minfo = []
+    meta_cohort_info = None
     for cohort, cohort_info in cohorts.items():
         logger.info("  - " + cohort)
 
@@ -129,6 +132,53 @@ def generate_meta_files(cohorts, genes, out_dir):
                                      fam.shape[0],
                                      File_Permu=robjects.r("NULL"))
 
+        # Creating lists with names of mssd and minfo files
+        list_mssd.append(mssd)
+        list_minfo.append(minfo)
+
+    # Combining the results
+    mssd_files = np.array(list_mssd)
+    minfo_files = np.array(list_minfo)
+    meta_cohort_info = metaskat.Open_MSSD_File_2Read(mssd_files, minfo_files)
+
+    # Computing the stats
+    meta_hom = metaskat.MetaSKAT_MSSD_ALL(**{
+        "Cohort.Info": meta_cohort_info,
+        "combined.weight": True,
+        "weights.beta": np.array([1,25]),
+        "method" : "davies",
+        "r.corr": 0,
+        "is.separate": False,
+        "Group_Idx": robjects.r("NULL"),
+        "MAF.cutoff": 5,
+    })
+
+    meta_hom.to_csvfile(os.path.join(out_dir, "metaSKAT.homo.txt"), 
+                        quote=False, sep="\t", row_names=False, col_names=True)
+
+    meta_het = metaskat.MetaSKAT_MSSD_ALL(**{
+        "Cohort.Info": meta_cohort_info,
+        "combined.weight": True,
+        "weights.beta": np.array([1, 25]),
+        "method": "davies",
+        "r.corr": 0,
+        "is.separate": True,
+        "Group_Idx": robjects.r("NULL"),
+        "MAF.cutoff": 5,
+    })
+
+    meta_het.to_csvfile(os.path.join(out_dir, "metaSKAT.hetero.txt"), 
+                        quote=False, sep="\t", row_names=False, col_names=True)
+
+    # Printing final results per cohort
+    i = 0
+    for cohort, cohort_info in cohorts.items():
+        name = cohort + "_info"
+        name = meta_cohort_info[meta_cohort_info.names.index("EachInfo")][i]
+        name = name[name.names.index("Info")]
+        name.to_csvfile(os.path.join(out_dir, cohort + ".MetaInfo.txt"), 
+                                     sep="\t", quote=False, row_names=False)
+        i = i + 1
 
 def read_cohort_configuration(fn):
     """Reads the cohort information using YAML.
