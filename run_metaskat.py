@@ -200,7 +200,7 @@ def get_analysis_data(plink_prefix, pheno, covariates, fid, iid, pheno_fn,
                              tmp_dir)
 
 
-def extract_plink(i_prefix, o_prefix, samples):
+def extract_plink(i_prefix, o_prefix, samples):  # pragma: no cover
     """Extract a list of samples from a Plink binary file.
 
     Args:

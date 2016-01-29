@@ -1,0 +1,12 @@
+[run]
+branch = True
+include = run_metaskat*
+
+[report]
+exclude_lines = 
+    pragma: no cover
+    if __name__ == "__main__":
+    def parse_args\(\):
+
+[html]
+title = Coverage report - run_metaskat
