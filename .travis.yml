@@ -16,6 +16,7 @@ before_install:
   - "conda update -q --all"
   - "conda info -a"
   - "python --version"
+install:
   - "conda install -q PyYAML"
   - "conda install -q numpy"
   - "conda install -q pandas"
