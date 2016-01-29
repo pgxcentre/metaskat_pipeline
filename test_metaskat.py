@@ -2,6 +2,7 @@
 
 
 import os
+import sys
 import random
 import shutil
 import logging
@@ -9,7 +10,23 @@ import unittest
 import collections
 from tempfile import mkdtemp
 
-import run_metaskat as metaskat
+
+try:
+    from unittest.mock import patch, Mock
+except:
+    from mock import patch, Mock
+
+
+# Mocking rpy2 and importing our module to test
+mock = Mock()
+modules = {
+    "rpy2": mock,
+    "rpy2.robjects": mock.module,
+    "rpy2.robjects.numpy2ri": mock.module,
+    "rpy2.robjects.packages": mock.module,
+}
+with patch.dict("sys.modules", modules):
+    import run_metaskat as metaskat
 
 
 class TestCheckArgs(unittest.TestCase):
@@ -205,7 +222,6 @@ class TestRead_Conf(unittest.TestCase):
             )],
             cm_logs.output,
         )
-
 
 
 class BaseTestCaseContext_Compatibility:
