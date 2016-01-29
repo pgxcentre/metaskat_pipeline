@@ -1,3 +1,6 @@
+[![Build Status](https://travis-ci.org/pgxcentre/metaskat_pipeline.svg?branch=master)](https://travis-ci.org/pgxcentre/metaskat_pipeline)
+
+
 # A python script to automatically run MetaSKAT
 
 `compute_lambda.py` is small script to execute a MetaSKAT analysis on different
