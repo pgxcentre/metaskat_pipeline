@@ -491,6 +491,32 @@ class TestGetAnalysisData(unittest.TestCase):
             cm_logs.output,
         )
 
+    def test_missing_column(self):
+        """Tests when there is a missing column in the phenotype file."""
+        prefix = os.path.join(self.tmp_dir, "test")
+        fam = self.fam.reindex(np.random.permutation(self.fam.index))
+        fam.to_csv(prefix + ".fam", sep=" ", index=False, header=False)
+
+        phenofile = os.path.join(self.tmp_dir, "pheno.txt")
+        cov = self.cov.reindex(np.random.permutation(self.cov.index))
+        cov.to_csv(phenofile, sep="\t", index=False)
+
+        # Testing the function
+        with self._my_compatibility_assertLogs(level="CRITICAL") as cm_logs:
+            with self.assertRaises(SystemExit) as cm:
+                metaskat.get_analysis_data(prefix, "PHENO", ["SEX", "A"],
+                                           "FID", "IID", phenofile, "foo")
+
+        # Checking the return code
+        self.assertNotEqual(0, cm.exception.code)
+        self.assertEqual(
+            ["CRITICAL:MetaSKAT Pipeline:{}: missing column '{}'".format(
+                phenofile,
+                "A",
+            )],
+            cm_logs.output,
+        )
+
 
 class BaseTestCaseContext_Compatibility:
 
