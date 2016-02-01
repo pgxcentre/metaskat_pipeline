@@ -460,6 +460,37 @@ class TestGetAnalysisData(unittest.TestCase):
             prefix, os.path.join("foo", "subset"), samples.tolist()
         )
 
+    def test_no_sample_fam_pheno(self):
+        """Tests when there is no sample in common in famfile and phenofile."""
+        fam_sample = {"i{}".format(i) for i in range(1, 4)}
+        cov_sample = {"i{}".format(i) for i in range(5, 7)}
+
+        prefix = os.path.join(self.tmp_dir, "test")
+        fam = self.fam.reindex(np.random.permutation(self.fam.index))
+        fam = fam[fam.IID.isin(fam_sample)]
+        fam.to_csv(prefix + ".fam", sep=" ", index=False, header=False)
+
+        phenofile = os.path.join(self.tmp_dir, "pheno.txt")
+        cov = self.cov.reindex(np.random.permutation(self.cov.index))
+        cov = cov[cov.IID.isin(cov_sample)]
+        cov.to_csv(phenofile, sep="\t", index=False)
+
+        # Testing the function
+        with self._my_compatibility_assertLogs(level="CRITICAL") as cm_logs:
+            with self.assertRaises(SystemExit) as cm:
+                metaskat.get_analysis_data(prefix, "PHENO", ["SEX", "AGE"],
+                                           "FID", "IID", phenofile, "foo")
+
+        # Checking the return code
+        self.assertNotEqual(0, cm.exception.code)
+        self.assertEqual(
+            ["CRITICAL:MetaSKAT Pipeline:{} vs {}: no sample in common".format(
+                prefix + ".fam",
+                phenofile,
+            )],
+            cm_logs.output,
+        )
+
 
 class BaseTestCaseContext_Compatibility:
 
