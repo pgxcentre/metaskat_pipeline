@@ -185,9 +185,7 @@ def get_analysis_data(plink_prefix, pheno, covariates, fid, iid, pheno_fn,
         # We have the same samples, hence, we only return the ordered phenotype
         # data (same order as FAM file)
         phenotypes = phenotypes.loc[fam.index, ]
-        if fam.index.tolist() != phenotypes.index.tolist():
-            logger.critical("something really bad happened...")
-            sys.exit(1)
+        assert fam.index.tolist() == phenotypes.index.tolist()
         return plink_prefix, phenotypes
 
     # We need extraction, so we create the directory, if required
