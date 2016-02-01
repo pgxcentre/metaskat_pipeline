@@ -345,7 +345,7 @@ class TestGetAnalysisData(unittest.TestCase):
             prefix, "PHENO",
             ["SEX", "AGE"],
             "FID", "IID",
-            phenofile, "foo")
+            phenofile, os.path.join(self.tmp_dir, "foo"))
 
         self.assertEqual(prefix, obs_prefix)
         self.assertTrue(isinstance(obs_pheno, pd.DataFrame))
@@ -368,7 +368,7 @@ class TestGetAnalysisData(unittest.TestCase):
             prefix, "PHENO",
             ["SEX", "AGE"],
             "FID", "IID",
-            phenofile, "foo")
+            phenofile, os.path.join(self.tmp_dir, "foo"))
 
         self.assertEqual(prefix, obs_prefix)
         self.assertTrue(isinstance(obs_pheno, pd.DataFrame))
@@ -402,7 +402,7 @@ class TestGetAnalysisData(unittest.TestCase):
                 prefix, "PHENO",
                 ["SEX", "AGE"],
                 "FID", "IID",
-                phenofile, "foo")
+                phenofile, os.path.join(self.tmp_dir, "foo"))
 
         self.assertEqual(new_prefix, obs_prefix)
         self.assertTrue(isinstance(obs_pheno, pd.DataFrame))
@@ -413,7 +413,8 @@ class TestGetAnalysisData(unittest.TestCase):
 
         self.assertTrue(mock.called)
         mock.assert_called_once_with(
-            prefix, os.path.join("foo", "subset"), samples.tolist()
+            prefix, os.path.join(os.path.join(self.tmp_dir, "foo"), "subset"), 
+            samples.tolist()
         )
 
     def test_subset_fam_pheno(self):
@@ -446,7 +447,7 @@ class TestGetAnalysisData(unittest.TestCase):
                 prefix, "PHENO",
                 ["SEX", "AGE"],
                 "FID", "IID",
-                phenofile, "foo")
+                phenofile, os.path.join(self.tmp_dir, "foo"))
 
         self.assertEqual(new_prefix, obs_prefix)
         self.assertTrue(isinstance(obs_pheno, pd.DataFrame))
@@ -457,7 +458,8 @@ class TestGetAnalysisData(unittest.TestCase):
 
         self.assertTrue(mock.called)
         mock.assert_called_once_with(
-            prefix, os.path.join("foo", "subset"), samples.tolist()
+            prefix, os.path.join(os.path.join(self.tmp_dir, "foo"), "subset"), 
+            samples.tolist()
         )
 
     def test_no_sample_fam_pheno(self):
@@ -479,7 +481,8 @@ class TestGetAnalysisData(unittest.TestCase):
         with self._my_compatibility_assertLogs(level="CRITICAL") as cm_logs:
             with self.assertRaises(SystemExit) as cm:
                 metaskat.get_analysis_data(prefix, "PHENO", ["SEX", "AGE"],
-                                           "FID", "IID", phenofile, "foo")
+                                           "FID", "IID", phenofile, 
+                                           os.path.join(self.tmp_dir, "foo"))
 
         # Checking the return code
         self.assertNotEqual(0, cm.exception.code)
@@ -505,7 +508,8 @@ class TestGetAnalysisData(unittest.TestCase):
         with self._my_compatibility_assertLogs(level="CRITICAL") as cm_logs:
             with self.assertRaises(SystemExit) as cm:
                 metaskat.get_analysis_data(prefix, "PHENO", ["SEX", "A"],
-                                           "FID", "IID", phenofile, "foo")
+                                           "FID", "IID", phenofile, 
+                                           os.path.join(self.tmp_dir, "foo"))
 
         # Checking the return code
         self.assertNotEqual(0, cm.exception.code)
