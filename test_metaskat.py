@@ -413,7 +413,7 @@ class TestGetAnalysisData(unittest.TestCase):
 
         self.assertTrue(mock.called)
         mock.assert_called_once_with(
-            prefix, os.path.join(os.path.join(self.tmp_dir, "foo"), "subset"), 
+            prefix, os.path.join(os.path.join(self.tmp_dir, "foo"), "subset"),
             samples.tolist()
         )
 
@@ -458,7 +458,7 @@ class TestGetAnalysisData(unittest.TestCase):
 
         self.assertTrue(mock.called)
         mock.assert_called_once_with(
-            prefix, os.path.join(os.path.join(self.tmp_dir, "foo"), "subset"), 
+            prefix, os.path.join(os.path.join(self.tmp_dir, "foo"), "subset"),
             samples.tolist()
         )
 
@@ -481,7 +481,7 @@ class TestGetAnalysisData(unittest.TestCase):
         with self._my_compatibility_assertLogs(level="CRITICAL") as cm_logs:
             with self.assertRaises(SystemExit) as cm:
                 metaskat.get_analysis_data(prefix, "PHENO", ["SEX", "AGE"],
-                                           "FID", "IID", phenofile, 
+                                           "FID", "IID", phenofile,
                                            os.path.join(self.tmp_dir, "foo"))
 
         # Checking the return code
@@ -508,7 +508,7 @@ class TestGetAnalysisData(unittest.TestCase):
         with self._my_compatibility_assertLogs(level="CRITICAL") as cm_logs:
             with self.assertRaises(SystemExit) as cm:
                 metaskat.get_analysis_data(prefix, "PHENO", ["SEX", "A"],
-                                           "FID", "IID", phenofile, 
+                                           "FID", "IID", phenofile,
                                            os.path.join(self.tmp_dir, "foo"))
 
         # Checking the return code
@@ -519,6 +519,48 @@ class TestGetAnalysisData(unittest.TestCase):
                 "A",
             )],
             cm_logs.output,
+        )
+
+    def test_na_pheno(self):
+        """Tests when there are na values in phenofile."""
+        prefix = os.path.join(self.tmp_dir, "test")
+        fam = self.fam.reindex(np.random.permutation(self.fam.index))
+        fam.to_csv(prefix + ".fam", sep=" ", index=False, header=False)
+
+        phenofile = os.path.join(self.tmp_dir, "pheno.txt")
+        cov = self.cov.reindex(np.random.permutation(self.cov.index))
+        cov.loc[cov.IID.isin({"i3", "i5"}), "PHENO"] = np.nan
+        cov.to_csv(phenofile, sep="\t", index=False)
+        cov = cov.dropna()
+
+        samples = fam.set_index(["FID", "IID"]).index.intersection(
+            cov.set_index(["FID", "IID"]).index
+        )
+
+        new_prefix = prefix + "_new"
+        fam = fam.loc[fam.IID.isin(cov.IID), ]
+        fam = fam.reindex(np.random.permutation(fam.index))
+        fam.to_csv(new_prefix + ".fam", sep=" ", index=False, header=False)
+
+        with patch.object(metaskat, "extract_plink",
+                          return_value=new_prefix) as mock:
+            obs_prefix, obs_pheno = metaskat.get_analysis_data(
+                prefix, "PHENO",
+                ["SEX", "AGE"],
+                "FID", "IID",
+                phenofile, os.path.join(self.tmp_dir, "foo"))
+
+        self.assertEqual(new_prefix, obs_prefix)
+        self.assertTrue(isinstance(obs_pheno, pd.DataFrame))
+        self.assertEqual((8, 3), obs_pheno.shape)
+        self.assertEqual(["PHENO", "SEX", "AGE"], list(obs_pheno.columns))
+        self.assertEqual(fam.set_index(["FID", "IID"]).index.tolist(),
+                         obs_pheno.index.tolist())
+
+        self.assertTrue(mock.called)
+        mock.assert_called_once_with(
+            prefix, os.path.join(os.path.join(self.tmp_dir, "foo"), "subset"),
+            samples.tolist()
         )
 
 
