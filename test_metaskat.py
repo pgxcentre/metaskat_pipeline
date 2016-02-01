@@ -10,6 +10,8 @@ import unittest
 import collections
 from tempfile import mkdtemp
 
+import numpy as np
+import pandas as pd
 
 try:
     from unittest.mock import patch, Mock
@@ -278,6 +280,79 @@ class TestExtractPlink(unittest.TestCase):
             ["plink", "--noweb", "--bfile", i_prefix, "--keep",
              o_prefix + ".to_extract", "--make-bed", "--out", o_prefix]
         )
+
+
+class TestGetAnalysisData(unittest.TestCase):
+    """Tests the 'get_analysis_data' function."""
+    def setUp(self):
+        """Setup the tests."""
+        self.tmp_dir = mkdtemp(prefix="metaskat_test_")
+
+        # create a fam
+        self.fam = pd.DataFrame(
+            [("f1", "i1", 0, 0, 1, -9),
+             ("f2", "i2", 0, 0, 1, -9),
+             ("f3", "i3", 0, 0, 1, -9),
+             ("f4", "i4", 0, 0, 1, -9),
+             ("f5", "i5", 0, 0, 1, -9),
+             ("f6", "i6", 0, 0, 1, -9),
+             ("f7", "i7", 0, 0, 1, -9),
+             ("f8", "i8", 0, 0, 1, -9),
+             ("f9", "i9", 0, 0, 1, -9),
+             ("f10", "i10", 0, 0, 1, -9)],
+            columns=["FID", "IID", "FAT", "MOT", "SEX", "PHENO"]
+        )
+
+        # create a pheno-covariates file
+        self.cov = pd.DataFrame(
+            [("f1", "i1", 25, 1, 0.1),
+             ("f2", "i2", 25, 1, 0.2),
+             ("f3", "i3", 25, 1, 0.3),
+             ("f4", "i4", 25, 1, 0.4),
+             ("f5", "i5", 25, 1, 0.5),
+             ("f6", "i6", 25, 1, 0.5),
+             ("f7", "i7", 25, 1, 0.4),
+             ("f8", "i8", 25, 1, 0.3),
+             ("f9", "i9", 25, 1, 0.2),
+             ("f10", "i10", 25, 1, 0.1)],
+            columns=["FID", "IID", "AGE", "SEX", "PHENO"]
+        )
+
+    def tearDown(self):
+        """Finishes the tests."""
+        # Cleaning the temporary directory
+        shutil.rmtree(self.tmp_dir)
+
+    def _my_compatibility_assertLogs(self, logger=None, level=None):
+        """Compatibility 'assertLogs' function for Python < 3.4."""
+        if hasattr(self, "assertLogs"):
+            return self.assertLogs(logger, level)
+
+        else:
+            return AssertLogsContext_Compatibility(self, logger, level)
+
+    def test_normal_functionality(self):
+        """Tests when everything is fine."""
+        prefix = os.path.join(self.tmp_dir, "test")
+        fam = self.fam.reindex(np.random.permutation(self.fam.index))
+        fam.to_csv(prefix + ".fam", sep=" ", index=False, header=False)
+
+        phenofile = os.path.join(self.tmp_dir, "pheno.txt")
+        cov = self.cov.reindex(np.random.permutation(self.cov.index))
+        cov.to_csv(phenofile, sep="\t", index=False)
+
+        obs_prefix, obs_pheno = metaskat.get_analysis_data(
+            prefix, "PHENO",
+            ["SEX", "AGE"],
+            "FID", "IID",
+            phenofile, "foo")
+
+        self.assertEqual(prefix, obs_prefix)
+        self.assertTrue(isinstance(obs_pheno, pd.DataFrame))
+        self.assertEqual((10, 3), obs_pheno.shape)
+        self.assertEqual(["PHENO", "SEX", "AGE"], list(obs_pheno.columns))
+        self.assertEqual(fam.set_index(["FID", "IID"]).index.tolist(),
+                         obs_pheno.index.tolist())
 
 
 class BaseTestCaseContext_Compatibility:
