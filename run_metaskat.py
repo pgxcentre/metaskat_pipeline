@@ -178,6 +178,9 @@ def get_analysis_data(plink_prefix, pheno, covariates, fid, iid, pheno_fn,
         ))
         sys.exit(1)
 
+    # Extracting the samples from the phenotype file
+    phenotypes = phenotypes.loc[same_samples, ]
+
     if (nb_same == fam.shape[0]) and (nb_same == phenotypes.shape[0]):
         # We have the same samples, hence, we only return the ordered phenotype
         # data (same order as FAM file)
@@ -200,7 +203,7 @@ def get_analysis_data(plink_prefix, pheno, covariates, fid, iid, pheno_fn,
                              tmp_dir)
 
 
-def extract_plink(i_prefix, o_prefix, samples):  # pragma: no cover
+def extract_plink(i_prefix, o_prefix, samples):
     """Extract a list of samples from a Plink binary file.
 
     Args:
@@ -223,8 +226,23 @@ def extract_plink(i_prefix, o_prefix, samples):  # pragma: no cover
         "--make-bed",
         "--out", o_prefix,
     ]
+
+    # Executing the command
+    execute_command(plink_command)
+
+    # Returning the prefix
+    return o_prefix
+
+
+def execute_command(command):   # pragma: no cover
+    """Execute a command.
+
+    Args:
+        command (list): the command to execute.
+
+    """
     try:
-        proc = subprocess.Popen(plink_command, stdout=subprocess.PIPE,
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE)
     except OSError:
         logger.critical("plink: missing binary")
@@ -240,8 +258,6 @@ def extract_plink(i_prefix, o_prefix, samples):  # pragma: no cover
     if proc.returncode != 0:
         logger.critical("there was a problem with plink\n" + stderr.decode())
         sys.exit(1)
-
-    return o_prefix
 
 
 def execute_meta_analysis(cohorts, genes, out_dir):
@@ -280,7 +296,9 @@ def execute_meta_analysis(cohorts, genes, out_dir):
                         quote=False, sep="\t", row_names=False, col_names=True)
 
     # Printing final results per cohort
-    each_cohort_info = meta_cohort_info[meta_cohort_info.names.index("EachInfo")]
+    each_cohort_info = meta_cohort_info[
+        meta_cohort_info.names.index("EachInfo")
+    ]
     for i, cohort in enumerate(cohort_names):
         final_info = each_cohort_info[i]
         final_info = final_info[final_info.names.index("Info")]
