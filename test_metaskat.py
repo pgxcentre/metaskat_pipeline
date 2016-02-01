@@ -392,7 +392,7 @@ class TestGetAnalysisData(unittest.TestCase):
         )
 
         new_prefix = prefix + "_new"
-        fam = fam.loc[cov.index, ]
+        fam = fam.loc[fam.IID.isin(cov.IID), ]
         fam = fam.reindex(np.random.permutation(fam.index))
         fam.to_csv(new_prefix + ".fam", sep=" ", index=False, header=False)
 
@@ -407,6 +407,50 @@ class TestGetAnalysisData(unittest.TestCase):
         self.assertEqual(new_prefix, obs_prefix)
         self.assertTrue(isinstance(obs_pheno, pd.DataFrame))
         self.assertEqual((8, 3), obs_pheno.shape)
+        self.assertEqual(["PHENO", "SEX", "AGE"], list(obs_pheno.columns))
+        self.assertEqual(fam.set_index(["FID", "IID"]).index.tolist(),
+                         obs_pheno.index.tolist())
+
+        self.assertTrue(mock.called)
+        mock.assert_called_once_with(
+            prefix, os.path.join("foo", "subset"), samples.tolist()
+        )
+
+    def test_subset_fam_pheno(self):
+        """Tests when there are different sample in famfile and phenofile."""
+        fam_sample = {"i{}".format(i) for i in range(1, 5)}
+        cov_sample = {"i{}".format(i) for i in range(3, 7)}
+
+        prefix = os.path.join(self.tmp_dir, "test")
+        fam = self.fam.reindex(np.random.permutation(self.fam.index))
+        fam = fam[fam.IID.isin(fam_sample)]
+        fam.to_csv(prefix + ".fam", sep=" ", index=False, header=False)
+
+        phenofile = os.path.join(self.tmp_dir, "pheno.txt")
+        cov = self.cov.reindex(np.random.permutation(self.cov.index))
+        cov = cov[cov.IID.isin(cov_sample)]
+        cov.to_csv(phenofile, sep="\t", index=False)
+
+        samples = fam.set_index(["FID", "IID"]).index.intersection(
+            cov.set_index(["FID", "IID"]).index
+        )
+
+        new_prefix = prefix + "_new"
+        fam = fam.loc[fam.IID.isin({"i3", "i4"}), ]
+        fam = fam.reindex(np.random.permutation(fam.index))
+        fam.to_csv(new_prefix + ".fam", sep=" ", index=False, header=False)
+
+        with patch.object(metaskat, "extract_plink",
+                          return_value=new_prefix) as mock:
+            obs_prefix, obs_pheno = metaskat.get_analysis_data(
+                prefix, "PHENO",
+                ["SEX", "AGE"],
+                "FID", "IID",
+                phenofile, "foo")
+
+        self.assertEqual(new_prefix, obs_prefix)
+        self.assertTrue(isinstance(obs_pheno, pd.DataFrame))
+        self.assertEqual((len(samples.tolist()), 3), obs_pheno.shape)
         self.assertEqual(["PHENO", "SEX", "AGE"], list(obs_pheno.columns))
         self.assertEqual(fam.set_index(["FID", "IID"]).index.tolist(),
                          obs_pheno.index.tolist())
