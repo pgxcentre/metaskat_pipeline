@@ -224,6 +224,62 @@ class TestRead_Conf(unittest.TestCase):
         )
 
 
+class TestExtractPlink(unittest.TestCase):
+    """Tests the 'extract_plink' function."""
+    def setUp(self):
+        """Setup the tests."""
+        self.tmp_dir = mkdtemp(prefix="metaskat_test_")
+
+    def tearDown(self):
+        """Finishes the tests."""
+        # Cleaning the temporary directory
+        shutil.rmtree(self.tmp_dir)
+
+    def _my_compatibility_assertLogs(self, logger=None, level=None):
+        """Compatibility 'assertLogs' function for Python < 3.4."""
+        if hasattr(self, "assertLogs"):
+            return self.assertLogs(logger, level)
+
+        else:
+            return AssertLogsContext_Compatibility(self, logger, level)
+
+    @patch.object(metaskat, "execute_command")
+    def test_normal_functionality(self, mocked):
+        """Tests when everything is fine."""
+        # The required data
+        samples = (
+            ("f1", "s1"),
+            ("f1", "s2"),
+            ("f2", "s2"),
+            ("f3", "s3"),
+            ("f4", "s4"),
+            ("f5", "s5"),
+            ("f6", "s6"),
+            ("f7", "s7"),
+        )
+        i_prefix = os.path.join(self.tmp_dir, "i_prefix")
+        o_prefix = os.path.join(self.tmp_dir, "o_prefix")
+
+        # Executing the function
+        metaskat.extract_plink(i_prefix, o_prefix, samples)
+
+        # Checking the file sample to extracts is the same
+        self.assertTrue(os.path.isfile(o_prefix + ".to_extract"))
+        with open(o_prefix + ".to_extract", "r") as f:
+            expected = f.read()
+        self.assertEqual(
+            "f1 s1\nf1 s2\nf2 s2\nf3 s3\nf4 s4\nf5 s5\nf6 s6\nf7 s7\n",
+            expected,
+        )
+
+        # Testing the command that should have been executed is the right
+        self.assertTrue(mocked.called)
+        mocked.assert_called_once_with(
+            ["plink", "--noweb", "--bfile", i_prefix, "--keep",
+             o_prefix + ".to_extract", "--make-bed", "--out", o_prefix]
+        )
+
+
 class BaseTestCaseContext_Compatibility:
 
     def __init__(self, test_case):
