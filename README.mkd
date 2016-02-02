@@ -1,4 +1,5 @@
 [![Build Status](https://travis-ci.org/pgxcentre/metaskat_pipeline.svg?branch=master)](https://travis-ci.org/pgxcentre/metaskat_pipeline)
+[![Coverage Status](https://coveralls.io/repos/github/pgxcentre/metaskat_pipeline/badge.svg?branch=master)](https://coveralls.io/github/pgxcentre/metaskat_pipeline?branch=master)
 
 
 # A python script to automatically run MetaSKAT
