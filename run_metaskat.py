@@ -46,7 +46,7 @@ logging.basicConfig(
 logger = logging.getLogger("MetaSKAT Pipeline")
 
 
-def main():
+def main():     # pragma: no cover
     """The main function."""
     args = parse_args()
     check_args(args)
