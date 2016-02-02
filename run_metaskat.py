@@ -65,6 +65,9 @@ def main():
     execute_skat(cohort_information, args.gene_list, o_prefix=args.output,
                  tmp_dir=tmp_dir)
 
+    # Running the metaSKAT analysis
+    execute_meta_analysis(cohort_information, args.gene_list, args.output)
+
     # Deleting temporary directory
     if os.path.isdir(tmp_dir):
         shutil.rmtree(tmp_dir)
@@ -260,6 +263,12 @@ def execute_command(command):   # pragma: no cover
 
 def execute_meta_analysis(cohorts, genes, out_dir):
     # Combining the results
+    cohort_names = sorted(cohorts.keys())
+    list_mssd = [os.path.join(out_dir, cohort + ".MSSD")
+                 for cohort in cohort_names]
+    list_minfo = [os.path.join(out_dir, cohort + ".MInfo")
+                  for cohort in cohort_names]
+
     mssd_files = np.array(list_mssd)
     minfo_files = np.array(list_minfo)
     meta_cohort_info = metaskat.Open_MSSD_File_2Read(mssd_files, minfo_files)
