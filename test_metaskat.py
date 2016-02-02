@@ -564,6 +564,217 @@ class TestGetAnalysisData(unittest.TestCase):
         )
 
 
+class TestExecuteSKAT(unittest.TestCase):
+    """Tests the 'execute_skat' function."""
+    def setUp(self):
+        """Setup the tests."""
+        self.tmp_dir = mkdtemp(prefix="metaskat_test_")
+
+        # create a pheno-covariates file
+        self.cov = pd.DataFrame(
+            [("f1", "i1", 25, 1, 33, 0.1),
+             ("f2", "i2", 25, 1, 34, 0.2),
+             ("f3", "i3", 25, 1, 35, 0.3),
+             ("f4", "i4", 25, 1, 30, 0.4),
+             ("f5", "i5", 25, 1, 36, 0.5),
+             ("f6", "i6", 25, 1, 38, 0.5),
+             ("f7", "i7", 25, 1, 23, 0.4),
+             ("f8", "i8", 25, 1, 13, 0.3),
+             ("f9", "i9", 25, 1, 31, 0.2),
+             ("f10", "i10", 25, 1, 29, 0.1)],
+            columns=["FID", "IID", "AGE", "SEX", "FOO", "PHENO"]
+        ).set_index(["FID", "IID"], verify_integrity=True)
+
+    def tearDown(self):
+        """Finishes the tests."""
+        # Cleaning the temporary directory
+        shutil.rmtree(self.tmp_dir)
+
+    def _my_compatibility_assertLogs(self, logger=None, level=None):
+        """Compatibility 'assertLogs' function for Python < 3.4."""
+        if hasattr(self, "assertLogs"):
+            return self.assertLogs(logger, level)
+
+        else:
+            return AssertLogsContext_Compatibility(self, logger, level)
+
+    def test_normal_functionality(self):
+        """Tests the normal functionality of the 'execute_skat' function."""
+        # The cohort information
+        cohort_info = dict(
+            cohort_1=dict(
+                prefix=os.path.join(self.tmp_dir, "prefix_1"),
+                phenotype="PHENO",
+                covariates=["SEX", "AGE"],
+                phenotype_file=os.path.join(self.tmp_dir, "pheno"),
+            ),
+            cohort_2=dict(
+                prefix=os.path.join(self.tmp_dir, "prefix_2"),
+                phenotype="PHENO",
+                covariates=["SEX", "FOO"],
+                phenotype_file=os.path.join(self.tmp_dir, "pheno_2"),
+                family_id="fam_id",
+                individual_id="ind_id",
+            ),
+        )
+
+        # Creating the mocks and executing the function
+        prefix = os.path.join(self.tmp_dir, "new_prefix")
+
+        class FormulaEnv(object):
+            environment = {}
+
+        formula_env = FormulaEnv()
+
+        with patch.object(metaskat, "get_analysis_data",
+                          return_value=(prefix, self.cov)) as mock_get_data, \
+             patch.object(metaskat, "rformula",
+                          return_value=formula_env) as mock_rformula, \
+             patch.object(metaskat.skat, "SKAT_Null_Model",
+                          return_value="dummy_model") as mock_skat, \
+             patch.object(metaskat.metaskat, "Generate_Meta_Files",
+                          return_value=None) as mock_metaskat, \
+             patch.object(metaskat.robjects, "r",
+                          return_value="NULL") as mock_rob:
+            metaskat.execute_skat(
+                cohort_info,
+                os.path.join(self.tmp_dir, "genes"),
+                os.path.join(self.tmp_dir, "o_prefix"),
+                self.tmp_dir,
+            )
+
+        # Testing the first mock was called with the right argument
+        self.assertEqual(2, mock_get_data.call_count)
+        mock_get_data.assert_any_call(
+            plink_prefix=os.path.join(self.tmp_dir, "prefix_1"),
+            pheno="PHENO",
+            covariates=["SEX", "AGE"],
+            pheno_fn=os.path.join(self.tmp_dir, "pheno"),
+            fid="FID",
+            iid="IID",
+            tmp_dir=os.path.join(self.tmp_dir, "cohort_1"),
+        )
+        mock_get_data.assert_any_call(
+            plink_prefix=os.path.join(self.tmp_dir, "prefix_2"),
+            pheno="PHENO",
+            covariates=["SEX", "FOO"],
+            pheno_fn=os.path.join(self.tmp_dir, "pheno_2"),
+            fid="fam_id",
+            iid="ind_id",
+            tmp_dir=os.path.join(self.tmp_dir, "cohort_2"),
+        )
+
+        # Testing the second mock was called with the right argument
+        self.assertEqual(2, mock_rformula.call_count)
+        mock_rformula.assert_any_call(
+            "cohort_1.PHENO ~ cohort_1.SEX + cohort_1.AGE"
+        )
+        mock_rformula.assert_any_call(
+            "cohort_2.PHENO ~ cohort_2.SEX + cohort_2.FOO"
+        )
+
+        # Testing what we have in the formula environment is OK
+        self.assertEqual({"cohort_1.PHENO", "cohort_1.AGE", "cohort_1.SEX",
+                          "cohort_2.PHENO", "cohort_2.FOO", "cohort_2.SEX"},
+                         set(formula_env.environment.keys()))
+        self.assertEqual(list(self.cov.PHENO),
+                         list(formula_env.environment["cohort_1.PHENO"]))
+        self.assertEqual(list(self.cov.AGE),
+                         list(formula_env.environment["cohort_1.AGE"]))
+        self.assertEqual(list(self.cov.SEX),
+                         list(formula_env.environment["cohort_1.SEX"]))
+        self.assertEqual(list(self.cov.PHENO),
+                         list(formula_env.environment["cohort_2.PHENO"]))
+        self.assertEqual(list(self.cov.FOO),
+                         list(formula_env.environment["cohort_2.FOO"]))
+        self.assertEqual(list(self.cov.SEX),
+                         list(formula_env.environment["cohort_2.SEX"]))
+
+        # Checking what SKAT was called correctly
+        self.assertEqual(2, mock_skat.call_count)
+        mock_skat.assert_called_with(
+            formula_env,
+            type="C",
+        )
+
+        # Checking that MetaSKAT was called correctly
+        self.assertEqual(2, mock_metaskat.call_count)
+        mock_metaskat.assert_any_call(
+            "dummy_model",
+            prefix + ".bed",
+            prefix + ".bim",
+            os.path.join(self.tmp_dir, "genes"),
+            os.path.join(self.tmp_dir, "o_prefix", "cohort_1.MSSD"),
+            os.path.join(self.tmp_dir, "o_prefix", "cohort_1.MInfo"),
+            10,
+            File_Permu="NULL",
+        )
+        mock_metaskat.assert_any_call(
+            "dummy_model",
+            prefix + ".bed",
+            prefix + ".bim",
+            os.path.join(self.tmp_dir, "genes"),
+            os.path.join(self.tmp_dir, "o_prefix", "cohort_2.MSSD"),
+            os.path.join(self.tmp_dir, "o_prefix", "cohort_2.MInfo"),
+            10,
+            File_Permu="NULL",
+        )
+
+    def test_with_metaskat_error(self):
+        """Tests when there is a problem with MetaSKAT."""
+        # The cohort information
+        cohort_info = dict(
+            cohort_1=dict(
+                prefix=os.path.join(self.tmp_dir, "prefix_1"),
+                phenotype="PHENO",
+                covariates=["SEX", "AGE"],
+                phenotype_file=os.path.join(self.tmp_dir, "pheno"),
+            ),
+            cohort_2=dict(
+                prefix=os.path.join(self.tmp_dir, "prefix_2"),
+                phenotype="PHENO",
+                covariates=["SEX", "FOO"],
+                phenotype_file=os.path.join(self.tmp_dir, "pheno_2"),
+                family_id="fam_id",
+                individual_id="ind_id",
+            ),
+        )
+
+        # Creating the mocks and executing the function
+        prefix = os.path.join(self.tmp_dir, "new_prefix")
+
+        class FormulaEnv(object):
+            environment = {}
+
+        formula_env = FormulaEnv()
+
+        with patch.object(metaskat, "get_analysis_data",
+                          return_value=(prefix, self.cov)) as mock_get_data, \
+             patch.object(metaskat, "rformula",
+                          return_value=formula_env) as mock_rformula, \
+             patch.object(metaskat.skat, "SKAT_Null_Model",
+                          return_value="dummy_model") as mock_skat, \
+             patch.object(metaskat.metaskat, "Generate_Meta_Files",
+                          return_value=None) as mock_metaskat, \
+             patch.object(metaskat.robjects, "r",
+                          side_effect=Exception("An error")) as mock_robj, \
+             self._my_compatibility_assertLogs(level="CRITICAL") as cm_logs, \
+             self.assertRaises(SystemExit) as cm:
+            metaskat.execute_skat(
+                cohort_info,
+                os.path.join(self.tmp_dir, "genes"),
+                os.path.join(self.tmp_dir, "o_prefix"),
+                self.tmp_dir,
+            )
+
+        # Checking the log
+        self.assertNotEqual(0, cm.exception.code)
+        self.assertEqual(
+            ["CRITICAL:MetaSKAT Pipeline:problem with SKAT\nAn error"],
+            cm_logs.output,
+        )
+
+
 class BaseTestCaseContext_Compatibility:
 
     def __init__(self, test_case):
