@@ -14,9 +14,9 @@ import numpy as np
 import pandas as pd
 
 try:
-    from unittest.mock import patch, Mock
+    from unittest.mock import patch, Mock, call
 except:
-    from mock import patch, Mock
+    from mock import patch, Mock, call
 
 
 # Mocking rpy2 and importing our module to test
@@ -773,6 +773,135 @@ class TestExecuteSKAT(unittest.TestCase):
             ["CRITICAL:MetaSKAT Pipeline:problem with SKAT\nAn error"],
             cm_logs.output,
         )
+
+
+class TestExecuteMetaAnalysis(unittest.TestCase):
+    """Tests the 'execute_meta_analysis' function."""
+    def setUp(self):
+        """Setup the tests."""
+        self.tmp_dir = mkdtemp(prefix="metaskat_test_")
+
+    def tearDown(self):
+        """Finishes the tests."""
+        # Cleaning the temporary directory
+        shutil.rmtree(self.tmp_dir)
+
+    def _my_compatibility_assertLogs(self, logger=None, level=None):
+        """Compatibility 'assertLogs' function for Python < 3.4."""
+        if hasattr(self, "assertLogs"):
+            return self.assertLogs(logger, level)
+
+        else:
+            return AssertLogsContext_Compatibility(self, logger, level)
+
+    def test_normal_functionality(self):
+        """Tests the normal functionality of the function."""
+        # The cohort information
+        cohort_info = dict(
+            cohort_1=dict(
+                prefix=os.path.join(self.tmp_dir, "prefix_1"),
+                phenotype="PHENO",
+                covariates=["SEX", "AGE"],
+                phenotype_file=os.path.join(self.tmp_dir, "pheno"),
+            ),
+            cohort_2=dict(
+                prefix=os.path.join(self.tmp_dir, "prefix_2"),
+                phenotype="PHENO",
+                covariates=["SEX", "AGE"],
+                phenotype_file=os.path.join(self.tmp_dir, "pheno"),
+            ),
+            cohort_3=dict(
+                prefix=os.path.join(self.tmp_dir, "prefix_3"),
+                phenotype="PHENO",
+                covariates=["SEX", "AGE"],
+                phenotype_file=os.path.join(self.tmp_dir, "pheno"),
+            ),
+        )
+
+        # Creating a dummy cohort information
+        class DummyMetaCohortInfo(object):
+            def __init__(self, values, names):
+                self.values = values
+                self.names = names
+
+            def __getitem__(self, k):
+                return self.values[k]
+
+        # A mock result
+        meta_result = Mock()
+
+        meta_cohort = DummyMetaCohortInfo(
+            values=[[
+                DummyMetaCohortInfo(values=[meta_result], names=["Info"]),
+                DummyMetaCohortInfo(values=[meta_result], names=["Info"]),
+                DummyMetaCohortInfo(values=[meta_result], names=["Info"]),
+            ]],
+            names=["EachInfo"],
+        )
+
+        # Creating a dummy value for the final cohort information
+        with patch.object(metaskat.metaskat, "MetaSKAT_MSSD_ALL",
+                          return_value=meta_result) as mock_metaskat, \
+             patch.object(metaskat.metaskat, "Open_MSSD_File_2Read",
+                          return_value=meta_cohort) as mock_file2read, \
+             patch.object(metaskat.np, "array",
+                          side_effect=list) as mock_np_array, \
+             patch.object(metaskat.robjects, "r",
+                          return_value="NULL") as mock_rob:
+            metaskat.execute_meta_analysis(
+                cohort_info,
+                os.path.join(self.tmp_dir, "genes"),
+                self.tmp_dir,
+            )
+
+        # Checking what have been called for 'Open_MSSD_File_2Read'
+        self.assertEqual(1, mock_file2read.call_count)
+        mock_file2read.assert_called_with(
+            [os.path.join(self.tmp_dir,
+                          "cohort_{}.MSSD".format(i+1)) for i in range(3)],
+            [os.path.join(self.tmp_dir,
+                          "cohort_{}.MInfo".format(i+1)) for i in range(3)],
+        )
+
+        # Checking what have been called for 'MetaSKAT_MSSD_ALL'
+        self.assertEqual(2, mock_metaskat.call_count)
+        mock_metaskat.assert_has_calls([
+            call(**{
+                "Cohort.Info": meta_cohort,
+                "combined.weight": True,
+                "weights.beta": [1, 25],
+                "method": "davies",
+                "r.corr": 0,
+                "is.separate": False,
+                "Group_Idx": "NULL",
+                "MAF.cutoff": 5,
+            }),
+            call(**{
+                "Cohort.Info": meta_cohort,
+                "combined.weight": True,
+                "weights.beta": [1, 25],
+                "method": "davies",
+                "r.corr": 0,
+                "is.separate": True,
+                "Group_Idx": "NULL",
+                "MAF.cutoff": 5,
+            }),
+        ])
+
+        # Checking what has been called for the MetaSKAT results
+        self.assertEqual(5, meta_result.to_csvfile.call_count)
+        meta_result.to_csvfile.assert_has_calls([
+            call(os.path.join(self.tmp_dir, "metaSKAT.homo.txt"),
+                 quote=False, sep="\t", row_names=False, col_names=True),
+            call(os.path.join(self.tmp_dir, "metaSKAT.hetero.txt"),
+                 quote=False, sep="\t", row_names=False, col_names=True),
+            call(os.path.join(self.tmp_dir, "cohort_1.MetaInfo.txt"),
+                 sep="\t", quote=False, row_names=False),
+            call(os.path.join(self.tmp_dir, "cohort_2.MetaInfo.txt"),
+                 sep="\t", quote=False, row_names=False),
+            call(os.path.join(self.tmp_dir, "cohort_3.MetaInfo.txt"),
+                 sep="\t", quote=False, row_names=False),
+        ])
 
 
 class BaseTestCaseContext_Compatibility:
