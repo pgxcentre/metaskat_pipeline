@@ -602,21 +602,20 @@ class TestExecuteSKAT(unittest.TestCase):
     def test_normal_functionality(self):
         """Tests the normal functionality of the 'execute_skat' function."""
         # The cohort information
-        cohort_info = dict(
-            cohort_1=dict(
+        cohort_info = collections.OrderedDict()
+        cohort_info["cohort_1"] = dict(
                 prefix=os.path.join(self.tmp_dir, "prefix_1"),
                 phenotype="PHENO",
                 covariates=["SEX", "AGE"],
                 phenotype_file=os.path.join(self.tmp_dir, "pheno"),
-            ),
-            cohort_2=dict(
+        )
+        cohort_info["cohort_2"] = dict(
                 prefix=os.path.join(self.tmp_dir, "prefix_2"),
                 phenotype="PHENO",
                 covariates=["SEX", "FOO"],
                 phenotype_file=os.path.join(self.tmp_dir, "pheno_2"),
                 family_id="fam_id",
                 individual_id="ind_id",
-            ),
         )
 
         # Creating the mocks and executing the function
@@ -627,8 +626,15 @@ class TestExecuteSKAT(unittest.TestCase):
 
         formula_env = FormulaEnv()
 
+        # What the get analysis will return
+        analysis_data_return = [
+            (prefix + "_1", self.cov[["SEX", "AGE", "PHENO"]]),
+            (prefix + "_2", self.cov[["SEX", "FOO", "PHENO"]]),
+        ]
+
+        # Executing the function
         with patch.object(metaskat, "get_analysis_data",
-                          return_value=(prefix, self.cov)) as mock_get_data, \
+                          side_effect=analysis_data_return) as mock_get_data, \
              patch.object(metaskat, "write_valid_segments",
                           return_value=None) as mock_write_segments, \
              patch.object(metaskat, "rformula",
@@ -644,30 +650,33 @@ class TestExecuteSKAT(unittest.TestCase):
                 os.path.join(self.tmp_dir, "genes"),
                 os.path.join(self.tmp_dir, "o_prefix"),
                 self.tmp_dir,
+                mac=6,
             )
 
         # Testing the first mock was called with the right argument
         self.assertEqual(2, mock_get_data.call_count)
-        mock_get_data.assert_any_call(
-            plink_prefix=os.path.join(self.tmp_dir, "prefix_1"),
-            pheno="PHENO",
-            covariates=["SEX", "AGE"],
-            pheno_fn=os.path.join(self.tmp_dir, "pheno"),
-            fid="FID",
-            iid="IID",
-            tmp_dir=os.path.join(self.tmp_dir, "cohort_1"),
-        )
-        mock_get_data.assert_any_call(
-            plink_prefix=os.path.join(self.tmp_dir, "prefix_2"),
-            pheno="PHENO",
-            covariates=["SEX", "FOO"],
-            pheno_fn=os.path.join(self.tmp_dir, "pheno_2"),
-            fid="fam_id",
-            iid="ind_id",
-            tmp_dir=os.path.join(self.tmp_dir, "cohort_2"),
-        )
+        mock_get_data.assert_has_calls([
+            call(
+                plink_prefix=os.path.join(self.tmp_dir, "prefix_1"),
+                pheno="PHENO",
+                covariates=["SEX", "AGE"],
+                pheno_fn=os.path.join(self.tmp_dir, "pheno"),
+                fid="FID",
+                iid="IID",
+                tmp_dir=os.path.join(self.tmp_dir, "cohort_1"),
+            ),
+            call(
+                plink_prefix=os.path.join(self.tmp_dir, "prefix_2"),
+                pheno="PHENO",
+                covariates=["SEX", "FOO"],
+                pheno_fn=os.path.join(self.tmp_dir, "pheno_2"),
+                fid="fam_id",
+                iid="ind_id",
+                tmp_dir=os.path.join(self.tmp_dir, "cohort_2"),
+            ),
+        ])
 
-        # Testing the second mock was called with the right argument
+        # Testing the third mock was called with the right argument
         self.assertEqual(2, mock_rformula.call_count)
         mock_rformula.assert_any_call(
             "cohort_1.PHENO ~ cohort_1.SEX + cohort_1.AGE"
@@ -702,26 +711,28 @@ class TestExecuteSKAT(unittest.TestCase):
 
         # Checking that MetaSKAT was called correctly
         self.assertEqual(2, mock_metaskat.call_count)
-        mock_metaskat.assert_any_call(
-            "dummy_model",
-            prefix + ".bed",
-            prefix + ".bim",
-            os.path.join(self.tmp_dir, "o_prefix", "valid_segments.txt"),
-            os.path.join(self.tmp_dir, "o_prefix", "cohort_1.MSSD"),
-            os.path.join(self.tmp_dir, "o_prefix", "cohort_1.MInfo"),
-            10,
-            File_Permu="NULL",
-        )
-        mock_metaskat.assert_any_call(
-            "dummy_model",
-            prefix + ".bed",
-            prefix + ".bim",
-            os.path.join(self.tmp_dir, "o_prefix", "valid_segments.txt"),
-            os.path.join(self.tmp_dir, "o_prefix", "cohort_2.MSSD"),
-            os.path.join(self.tmp_dir, "o_prefix", "cohort_2.MInfo"),
-            10,
-            File_Permu="NULL",
-        )
+        mock_metaskat.assert_has_calls([
+            call(
+                "dummy_model",
+                prefix + "_1.bed",
+                prefix + "_1.bim",
+                os.path.join(self.tmp_dir, "o_prefix", "valid_segments.txt"),
+                os.path.join(self.tmp_dir, "o_prefix", "cohort_1.MSSD"),
+                os.path.join(self.tmp_dir, "o_prefix", "cohort_1.MInfo"),
+                10,
+                File_Permu="NULL",
+            ),
+            call(
+                "dummy_model",
+                prefix + "_2.bed",
+                prefix + "_2.bim",
+                os.path.join(self.tmp_dir, "o_prefix", "valid_segments.txt"),
+                os.path.join(self.tmp_dir, "o_prefix", "cohort_2.MSSD"),
+                os.path.join(self.tmp_dir, "o_prefix", "cohort_2.MInfo"),
+                10,
+                File_Permu="NULL",
+            ),
+        ])
 
     def test_with_metaskat_error(self):
         """Tests when there is a problem with MetaSKAT."""
