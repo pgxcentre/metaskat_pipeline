@@ -1,5 +1,5 @@
 [![Build Status](https://travis-ci.org/pgxcentre/metaskat_pipeline.svg?branch=master)](https://travis-ci.org/pgxcentre/metaskat_pipeline)
-[![Coverage Status](https://coveralls.io/repos/github/pgxcentre/metaskat_pipeline/badge.svg?branch=master)](https://coveralls.io/github/pgxcentre/metaskat_pipeline?branch=master)
+[![Coverage Status](https://coveralls.io/repos/pgxcentre/metaskat_pipeline/badge.svg?branch=master)](https://coveralls.io/github/pgxcentre/metaskat_pipeline?branch=master)
 
 
 # A python script to automatically run MetaSKAT
@@ -16,6 +16,7 @@ The tool requires a standard [Python](http://python.org/) installation (version
 1. [pandas](http://pandas.pydata.org/) version 0.17 or latest
 2. [rpy2](https://bitbucket.org/rpy2/) version 2.7.7 or latest
 3. [PyYAML](http://pyyaml.org/) version 3.11 or latest
+4. [pyplink](https://github.com/lemieuxl/pyplink) version 1.2.0 or latest
 
 The tool has been tested on *Linux* only, but should also work on both Mac OSX
 and Windows.
