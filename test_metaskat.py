@@ -1019,6 +1019,82 @@ class TestReadSegments(unittest.TestCase):
         self.assertEqual(expected_segments, dict(obs_segments))
 
 
+class TestComputeSegmentMac(unittest.TestCase):
+    """Tests the 'compute_segment_mac' function."""
+    def setUp(self):
+        """Setup the tests."""
+        self.tmp_dir = mkdtemp(prefix="metaskat_test_")
+
+        self.segments_of_marker = {
+            "MARKER_1": {"SEG_1"},
+            "MARKER_2": {"SEG_1"},
+            "MARKER_3": {"SEG_1", "SEG_2"},
+            "MARKER_4": {"SEG_2"},
+            "MARKER_5": {"SEG_3"},
+            "MARKER_6": {"SEG_3"},
+            "MARKER_7": {"SEG_3"},
+            "MARKER_8": {"SEG_3", "SEG_4"},
+        }
+
+    def tearDown(self):
+        """Finishes the tests."""
+        # Cleaning the temporary directory
+        shutil.rmtree(self.tmp_dir)
+
+    def _my_compatibility_assertLogs(self, logger=None, level=None):
+        """Compatibility 'assertLogs' function for Python < 3.4."""
+        if hasattr(self, "assertLogs"):
+            return self.assertLogs(logger, level)
+
+        else:
+            return AssertLogsContext_Compatibility(self, logger, level)
+
+    def test_normal_functionality(self):
+        """Tests the normal functionality of the function."""
+        # What will be returned by PyPlink
+        class DummyPyPlink(object):
+            def iter_geno(self):
+                return (
+                    ("MARKER_1", np.array([0, 0, 1, 0, 1, 2, 0, 1, 1, 0]),),
+                    ("MARKER_2", np.array([0, 1, 0, 0, 1, 0, 0, 0, 0, 0]),),
+                    ("MARKER_3", np.array([0, 1, 1, 1, 0, 0, 0, 0, 0, 2]),),
+                    ("MARKER_4", np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),),
+                    ("MARKER_5", np.array([0, 0, 1, 0, 1, 1, 0, 0, 1, 0]),),
+                    ("MARKER_6", np.array([2, 2, 1, 2, 1, 0, 2, 1, 1, 2]),),
+                    ("MARKER_7", np.array([0, 0, 1, 1, 1, 0, 0, 2, 1, 0]),),
+                    ("MARKER_8", np.array([1, 0, 0, 0, 0, 0, 0, 1, 0, 0]),),
+                    ("MARKER_9", np.array([0, 1, 1, 0, 0, 0, 0, 1, 0, 2]),),
+                )
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args, **kwargs):
+                pass
+
+        prefix = os.path.join(self.tmp_dir, "prefix")
+        with patch.object(metaskat, "PyPlink") as mock_pyplink:
+            # Changing that the mock returns
+            mock_pyplink.return_value = DummyPyPlink()
+
+            # Executing the function
+            observed = metaskat.compute_segment_mac(prefix,
+                                                    self.segments_of_marker)
+
+        # Checking that PyPlink was called
+        self.assertEqual(1, mock_pyplink.call_count)
+        mock_pyplink.assert_called_once_with(prefix, "r")
+
+        # Checking the results
+        expected = {
+            "SEG_1": 13,
+            "SEG_2": 5,
+            "SEG_3": 18,
+            "SEG_4": 2,
+        }
+        self.assertEqual(expected, dict(observed))
+
+
 class BaseTestCaseContext_Compatibility:
 
     def __init__(self, test_case):
