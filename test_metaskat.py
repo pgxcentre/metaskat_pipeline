@@ -604,18 +604,18 @@ class TestExecuteSKAT(unittest.TestCase):
         # The cohort information
         cohort_info = collections.OrderedDict()
         cohort_info["cohort_1"] = dict(
-                prefix=os.path.join(self.tmp_dir, "prefix_1"),
-                phenotype="PHENO",
-                covariates=["SEX", "AGE"],
-                phenotype_file=os.path.join(self.tmp_dir, "pheno"),
+            prefix=os.path.join(self.tmp_dir, "prefix_1"),
+            phenotype="PHENO",
+            covariates=["SEX", "AGE"],
+            phenotype_file=os.path.join(self.tmp_dir, "pheno"),
         )
         cohort_info["cohort_2"] = dict(
-                prefix=os.path.join(self.tmp_dir, "prefix_2"),
-                phenotype="PHENO",
-                covariates=["SEX", "FOO"],
-                phenotype_file=os.path.join(self.tmp_dir, "pheno_2"),
-                family_id="fam_id",
-                individual_id="ind_id",
+            prefix=os.path.join(self.tmp_dir, "prefix_2"),
+            phenotype="PHENO",
+            covariates=["SEX", "FOO"],
+            phenotype_file=os.path.join(self.tmp_dir, "pheno_2"),
+            family_id="fam_id",
+            individual_id="ind_id",
         )
 
         # Creating the mocks and executing the function
@@ -1093,6 +1093,141 @@ class TestComputeSegmentMac(unittest.TestCase):
             "SEG_4": 2,
         }
         self.assertEqual(expected, dict(observed))
+
+
+class TestWriteValidSegments(unittest.TestCase):
+    """Tests the 'write_valid_segments' function."""
+    def setUp(self):
+        """Setup the tests."""
+        self.tmp_dir = mkdtemp(prefix="metaskat_test_")
+
+        # The segment for each marker
+        self.segments_of_marker = {
+            "MARKER_1": {"SEG_1"},
+            "MARKER_2": {"SEG_1"},
+            "MARKER_3": {"SEG_1", "SEG_2"},
+            "MARKER_4": {"SEG_2"},
+            "MARKER_5": {"SEG_3"},
+            "MARKER_6": {"SEG_3"},
+            "MARKER_7": {"SEG_3"},
+            "MARKER_8": {"SEG_3", "SEG_4"},
+            "MARKER_9": {"SEG_4", "SEG_5"},
+        }
+
+        # The markers in each segment
+        self.markers_of_segment = {
+            "SEG_1": {"MARKER_1", "MARKER_2", "MARKER_3"},
+            "SEG_2": {"MARKER_3", "MARKER_4"},
+            "SEG_3": {"MARKER_5", "MARKER_6", "MARKER_7", "MARKER_8"},
+            "SEG_4": {"MARKER_8", "MARKER_9"},
+            "SEG_5": {"MARKER_9"}
+        }
+
+        # The MAC values for cohort 1
+        self.mac_values_cohort_1 = {
+            "SEG_1": 13,
+            "SEG_2": 5,
+            "SEG_3": 18,
+            "SEG_4": 2,
+        }
+
+        # The MAC values for cohort 2
+        self.mac_values_cohort_2 = {
+            "SEG_1": 16,
+            "SEG_2": 4,
+            "SEG_3": 13,
+            "SEG_4": 8,
+        }
+
+        # The MAC values for cohort 2
+        self.mac_values_cohort_3 = {
+            "SEG_1": 13,
+            "SEG_2": 11,
+            "SEG_3": 9,
+            "SEG_4": 13,
+        }
+
+        # The cohort information
+        self.cohort_info = collections.OrderedDict()
+        self.cohort_info["cohort_1"] = dict(
+            new_prefix=os.path.join(self.tmp_dir, "new_prefix_1"),
+        )
+        self.cohort_info["cohort_2"] = dict(
+            new_prefix=os.path.join(self.tmp_dir, "new_prefix_2"),
+        )
+        self.cohort_info["cohort_3"] = dict(
+            new_prefix=os.path.join(self.tmp_dir, "new_prefix_3"),
+        )
+
+        # The segment file name
+        self.segments_fn = os.path.join(self.tmp_dir, "segments")
+
+    def tearDown(self):
+        """Finishes the tests."""
+        # Cleaning the temporary directory
+        shutil.rmtree(self.tmp_dir)
+
+    def _my_compatibility_assertLogs(self, logger=None, level=None):
+        """Compatibility 'assertLogs' function for Python < 3.4."""
+        if hasattr(self, "assertLogs"):
+            return self.assertLogs(logger, level)
+
+        else:
+            return AssertLogsContext_Compatibility(self, logger, level)
+
+    def test_normal_functionality(self):
+        """Tests the normal functionality of the function."""
+        # The results will be in this file
+        output_fn = os.path.join(self.tmp_dir, "new_segments.txt")
+
+        with patch.object(metaskat, "read_segments") as mock_read_seg, \
+                patch.object(metaskat, "compute_segment_mac") as mock_mac:
+            # Changing what the mock will return
+            mock_mac.side_effect = (self.mac_values_cohort_1,
+                                    self.mac_values_cohort_2,
+                                    self.mac_values_cohort_3)
+            mock_read_seg.return_value = (self.segments_of_marker,
+                                          self.markers_of_segment)
+
+            # Executing the function
+            metaskat.write_valid_segments(
+                cohorts=self.cohort_info,
+                segments_fn=self.segments_fn,
+                mac=4,
+                output_fn=output_fn,
+            )
+
+        # Checking what has been called with read_segments
+        self.assertEqual(1, mock_read_seg.call_count)
+        mock_read_seg.assert_called_once_with(self.segments_fn)
+
+        # Checking what has been called with compute_segment_mac
+        self.assertEqual(3, mock_mac.call_count)
+        mock_mac.assert_has_calls([
+            call(os.path.join(self.tmp_dir, "new_prefix_1"),
+                              self.segments_of_marker),
+            call(os.path.join(self.tmp_dir, "new_prefix_2"),
+                              self.segments_of_marker),
+            call(os.path.join(self.tmp_dir, "new_prefix_3"),
+                              self.segments_of_marker),
+        ])
+
+        # Checking the output file
+        self.assertTrue(os.path.isfile(output_fn))
+
+        # Checking the file content
+        with open(output_fn, "r") as f:
+            observed = f.read()
+        expected = (
+            "SEG_1\tMARKER_1\n"
+            "SEG_1\tMARKER_2\n"
+            "SEG_1\tMARKER_3\n"
+            "SEG_3\tMARKER_5\n"
+            "SEG_3\tMARKER_6\n"
+            "SEG_3\tMARKER_7\n"
+            "SEG_3\tMARKER_8\n"
+        )
+        self.assertEqual(expected, observed)
 
 
 class BaseTestCaseContext_Compatibility:
