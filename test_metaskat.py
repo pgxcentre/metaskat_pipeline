@@ -757,21 +757,20 @@ class TestExecuteSKAT(unittest.TestCase):
     def test_with_metaskat_error(self):
         """Tests when there is a problem with MetaSKAT."""
         # The cohort information
-        cohort_info = dict(
-            cohort_1=dict(
-                prefix=os.path.join(self.tmp_dir, "prefix_1"),
-                phenotype="PHENO",
-                covariates=["SEX", "AGE"],
-                phenotype_file=os.path.join(self.tmp_dir, "pheno"),
-            ),
-            cohort_2=dict(
-                prefix=os.path.join(self.tmp_dir, "prefix_2"),
-                phenotype="PHENO",
-                covariates=["SEX", "FOO"],
-                phenotype_file=os.path.join(self.tmp_dir, "pheno_2"),
-                family_id="fam_id",
-                individual_id="ind_id",
-            ),
+        cohort_info = collections.OrderedDict()
+        cohort_info["cohort_1"] = dict(
+            prefix=os.path.join(self.tmp_dir, "prefix_1"),
+            phenotype="PHENO",
+            covariates=["SEX", "AGE"],
+            phenotype_file=os.path.join(self.tmp_dir, "pheno"),
+        )
+        cohort_info["cohort_2"] = dict(
+            prefix=os.path.join(self.tmp_dir, "prefix_2"),
+            phenotype="PHENO",
+            covariates=["SEX", "FOO"],
+            phenotype_file=os.path.join(self.tmp_dir, "pheno_2"),
+            family_id="fam_id",
+            individual_id="ind_id",
         )
 
         # Creating the mocks and executing the function
@@ -782,8 +781,14 @@ class TestExecuteSKAT(unittest.TestCase):
 
         formula_env = FormulaEnv()
 
+        # What the get analysis will return
+        analysis_data_return = [
+            (prefix + "_1", self.cov[["SEX", "AGE", "PHENO"]]),
+            (prefix + "_2", self.cov[["SEX", "FOO", "PHENO"]]),
+        ]
+
         with patch.object(metaskat, "get_analysis_data",
-                          return_value=(prefix, self.cov)) as mock_get_data, \
+                          side_effect=analysis_data_return) as mock_get_data, \
              patch.object(metaskat, "write_valid_segments",
                           return_value=None) as mock_write_segments, \
              patch.object(metaskat, "rformula",
