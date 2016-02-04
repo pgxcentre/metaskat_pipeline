@@ -21,6 +21,7 @@ install:
   - "conda install -q numpy"
   - "conda install -q pandas"
   - "conda install mock"
+  - "conda install pyplink -c http://statgen.org/wp-content/uploads/Softwares/pyplink"
   - "pip install coveralls"
   - "conda list"
 script:
