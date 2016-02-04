@@ -107,6 +107,20 @@ class TestCheckArgs(unittest.TestCase):
             cm_logs.output,
         )
 
+    def test_low_mac(self):
+        """Tests when the MAC value is 0 or less."""
+        self.dummy.mac = -1
+        with self._my_compatibility_assertLogs(level="CRITICAL") as cm_logs:
+            with self.assertRaises(SystemExit) as cm:
+                metaskat.check_args(self.dummy)
+
+        # Checking the return code
+        self.assertNotEqual(0, cm.exception.code)
+        self.assertEqual(
+            ["CRITICAL:MetaSKAT Pipeline:-1: invalid MAC value"],
+            cm_logs.output,
+        )
+
 
 class TestRead_Conf(unittest.TestCase):
     """Tests the 'read_cohort_configuration' function."""
