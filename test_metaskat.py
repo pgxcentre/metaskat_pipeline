@@ -633,18 +633,23 @@ class TestExecuteSKAT(unittest.TestCase):
         ]
 
         # Executing the function
-        with patch.object(metaskat, "get_analysis_data",
-                          side_effect=analysis_data_return) as mock_get_data, \
-             patch.object(metaskat, "write_valid_segments",
-                          return_value=None) as mock_write_segments, \
-             patch.object(metaskat, "rformula",
-                          return_value=formula_env) as mock_rformula, \
-             patch.object(metaskat.skat, "SKAT_Null_Model",
-                          return_value="dummy_model") as mock_skat, \
-             patch.object(metaskat.metaskat, "Generate_Meta_Files",
-                          return_value=None) as mock_metaskat, \
-             patch.object(metaskat.robjects, "r",
-                          return_value="NULL") as mock_rob:
+        with patch.object(metaskat, "get_analysis_data") as mock_get_data, \
+                patch.object(metaskat, "write_valid_segments") as mock_write, \
+                patch.object(metaskat, "rformula") as mock_rformula, \
+                patch.object(metaskat.skat, "SKAT_Null_Model") as mock_skat, \
+                patch.object(metaskat.metaskat,
+                             "Generate_Meta_Files") as mock_meta, \
+                patch.object(metaskat.robjects, "r") as mock_robj:
+
+            # Changing what the mocks will do
+            mock_get_data.side_effect = analysis_data_return
+            mock_write.return_value = None
+            mock_rformula.return_value = formula_env
+            mock_skat.return_value = "dummy_model"
+            mock_meta.return_value = None
+            mock_robj.return_value = "NULL"
+
+            # Executing the function
             metaskat.execute_skat(
                 cohort_info,
                 os.path.join(self.tmp_dir, "genes"),
@@ -687,8 +692,8 @@ class TestExecuteSKAT(unittest.TestCase):
                                                               "PHENO"]]
 
         # Testing the second mock was called with the right argument
-        self.assertEqual(1, mock_write_segments.call_count)
-        mock_write_segments.assert_called_once_with(
+        self.assertEqual(1, mock_write.call_count)
+        mock_write.assert_called_once_with(
             cohorts=cohort_info,
             segments_fn=os.path.join(self.tmp_dir, "genes"),
             mac=6,
@@ -730,8 +735,8 @@ class TestExecuteSKAT(unittest.TestCase):
         )
 
         # Checking that MetaSKAT was called correctly
-        self.assertEqual(2, mock_metaskat.call_count)
-        mock_metaskat.assert_has_calls([
+        self.assertEqual(2, mock_meta.call_count)
+        mock_meta.assert_has_calls([
             call(
                 "dummy_model",
                 prefix + "_1.bed",
@@ -787,20 +792,24 @@ class TestExecuteSKAT(unittest.TestCase):
             (prefix + "_2", self.cov[["SEX", "FOO", "PHENO"]]),
         ]
 
-        with patch.object(metaskat, "get_analysis_data",
-                          side_effect=analysis_data_return) as mock_get_data, \
-             patch.object(metaskat, "write_valid_segments",
-                          return_value=None) as mock_write_segments, \
-             patch.object(metaskat, "rformula",
-                          return_value=formula_env) as mock_rformula, \
-             patch.object(metaskat.skat, "SKAT_Null_Model",
-                          return_value="dummy_model") as mock_skat, \
-             patch.object(metaskat.metaskat, "Generate_Meta_Files",
-                          return_value=None) as mock_metaskat, \
-             patch.object(metaskat.robjects, "r",
-                          side_effect=Exception("An error")) as mock_robj, \
-             self._my_compatibility_assertLogs(level="CRITICAL") as cm_logs, \
-             self.assertRaises(SystemExit) as cm:
+        with patch.object(metaskat, "get_analysis_data") as mock_get_data, \
+                patch.object(metaskat, "write_valid_segments") as mock_write, \
+                patch.object(metaskat, "rformula") as mock_rformula, \
+                patch.object(metaskat.skat, "SKAT_Null_Model") as mock_skat, \
+                patch.object(metaskat.metaskat,
+                             "Generate_Meta_Files") as mock_meta, \
+                patch.object(metaskat.robjects, "r") as mock_robj, \
+                self._my_compatibility_assertLogs(level="CRITICAL") as logs, \
+                self.assertRaises(SystemExit) as cm:
+
+            # Changing what the mocks will do
+            mock_get_data.side_effect = analysis_data_return
+            mock_write.return_value = None
+            mock_rformula.return_value = formula_env
+            mock_skat.return_value = "dummy_model"
+            mock_meta.return_value = None
+            mock_robj.side_effect = Exception("An error occured")
+
             metaskat.execute_skat(
                 cohort_info,
                 os.path.join(self.tmp_dir, "genes"),
@@ -811,8 +820,8 @@ class TestExecuteSKAT(unittest.TestCase):
         # Checking the log
         self.assertNotEqual(0, cm.exception.code)
         self.assertEqual(
-            ["CRITICAL:MetaSKAT Pipeline:problem with SKAT\nAn error"],
-            cm_logs.output,
+            ["CRITICAL:MetaSKAT Pipeline:problem with SKAT\nAn error occured"],
+            logs.output,
         )
 
 
@@ -883,12 +892,13 @@ class TestExecuteMetaAnalysis(unittest.TestCase):
         # Creating a dummy value for the final cohort information
         with patch.object(metaskat.metaskat, "MetaSKAT_MSSD_ALL",
                           return_value=meta_result) as mock_metaskat, \
-             patch.object(metaskat.metaskat, "Open_MSSD_File_2Read",
-                          return_value=meta_cohort) as mock_file2read, \
-             patch.object(metaskat.np, "array",
-                          side_effect=list) as mock_np_array, \
-             patch.object(metaskat.robjects, "r",
-                          return_value="NULL") as mock_rob:
+                patch.object(metaskat.metaskat, "Open_MSSD_File_2Read",
+                             return_value=meta_cohort) as mock_file2read, \
+                patch.object(metaskat.np, "array",
+                             side_effect=list) as mock_np_array, \
+                patch.object(metaskat.robjects, "r",
+                             return_value="NULL") as mock_rob:
+
             metaskat.execute_meta_analysis(
                 cohort_info,
                 os.path.join(self.tmp_dir, "genes"),
