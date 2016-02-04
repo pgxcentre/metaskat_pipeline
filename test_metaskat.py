@@ -676,6 +676,26 @@ class TestExecuteSKAT(unittest.TestCase):
             ),
         ])
 
+        # Adding the prefix
+        cohort_info["cohort_1"]["new_prefix"] = prefix
+        cohort_info["cohort_2"]["new_prefix"] = prefix
+
+        # Adding the phenotypes
+        cohort_info["cohort_1"]["phenotype_data"] = self.cov[["SEX", "AGE",
+                                                              "PHENO"]]
+        cohort_info["cohort_2"]["phenotype_data"] = self.cov[["SEX", "FOO",
+                                                              "PHENO"]]
+
+        # Testing the second mock was called with the right argument
+        self.assertEqual(1, mock_write_segments.call_count)
+        mock_write_segments.assert_called_once_with(
+            cohorts=cohort_info,
+            segments_fn=os.path.join(self.tmp_dir, "genes"),
+            mac=6,
+            output_fn=os.path.join(self.tmp_dir, "o_prefix",
+                                   "valid_segments.txt")
+        )
+
         # Testing the third mock was called with the right argument
         self.assertEqual(2, mock_rformula.call_count)
         mock_rformula.assert_any_call(
