@@ -53,6 +53,7 @@ class TestCheckArgs(unittest.TestCase):
         self.dummy = Dummy
         self.dummy.yaml_file = self.conf_fn
         self.dummy.gene_list = self.gene_fn
+        self.dummy.mac = 4
 
     def tearDown(self):
         """Finishes the tests."""
@@ -628,6 +629,8 @@ class TestExecuteSKAT(unittest.TestCase):
 
         with patch.object(metaskat, "get_analysis_data",
                           return_value=(prefix, self.cov)) as mock_get_data, \
+             patch.object(metaskat, "write_valid_segments",
+                          return_value=None) as mock_write_segments, \
              patch.object(metaskat, "rformula",
                           return_value=formula_env) as mock_rformula, \
              patch.object(metaskat.skat, "SKAT_Null_Model",
@@ -703,7 +706,7 @@ class TestExecuteSKAT(unittest.TestCase):
             "dummy_model",
             prefix + ".bed",
             prefix + ".bim",
-            os.path.join(self.tmp_dir, "genes"),
+            os.path.join(self.tmp_dir, "o_prefix", "valid_segments.txt"),
             os.path.join(self.tmp_dir, "o_prefix", "cohort_1.MSSD"),
             os.path.join(self.tmp_dir, "o_prefix", "cohort_1.MInfo"),
             10,
@@ -713,7 +716,7 @@ class TestExecuteSKAT(unittest.TestCase):
             "dummy_model",
             prefix + ".bed",
             prefix + ".bim",
-            os.path.join(self.tmp_dir, "genes"),
+            os.path.join(self.tmp_dir, "o_prefix", "valid_segments.txt"),
             os.path.join(self.tmp_dir, "o_prefix", "cohort_2.MSSD"),
             os.path.join(self.tmp_dir, "o_prefix", "cohort_2.MInfo"),
             10,
@@ -750,6 +753,8 @@ class TestExecuteSKAT(unittest.TestCase):
 
         with patch.object(metaskat, "get_analysis_data",
                           return_value=(prefix, self.cov)) as mock_get_data, \
+             patch.object(metaskat, "write_valid_segments",
+                          return_value=None) as mock_write_segments, \
              patch.object(metaskat, "rformula",
                           return_value=formula_env) as mock_rformula, \
              patch.object(metaskat.skat, "SKAT_Null_Model",
