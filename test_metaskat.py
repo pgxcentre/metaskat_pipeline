@@ -945,6 +945,70 @@ class TestExecuteMetaAnalysis(unittest.TestCase):
         ])
 
 
+class TestReadSegments(unittest.TestCase):
+    """Tests the 'read_segments' function."""
+    def setUp(self):
+        """Setup the tests."""
+        self.tmp_dir = mkdtemp(prefix="metaskat_test_")
+
+        # Writing the segment file
+        content = (
+            "SEG_1\tMARKER_1\n"
+            "SEG_1\tMARKER_2\n"
+            "SEG_1\tMARKER_3\n"
+            "SEG_2\tMARKER_3\n"
+            "SEG_2\tMARKER_4\n"
+            "SEG_3\tMARKER_5\n"
+            "SEG_3\tMARKER_6\n"
+            "SEG_3\tMARKER_7\n"
+            "SEG_3\tMARKER_8\n"
+            "SEG_4\tMARKER_8\n"
+        )
+        self.segments_fn = os.path.join(self.tmp_dir, "segment")
+        with open(self.segments_fn, "w") as f:
+            f.write(content)
+
+    def tearDown(self):
+        """Finishes the tests."""
+        # Cleaning the temporary directory
+        shutil.rmtree(self.tmp_dir)
+
+    def _my_compatibility_assertLogs(self, logger=None, level=None):
+        """Compatibility 'assertLogs' function for Python < 3.4."""
+        if hasattr(self, "assertLogs"):
+            return self.assertLogs(logger, level)
+
+        else:
+            return AssertLogsContext_Compatibility(self, logger, level)
+
+    def test_normal_functionality(self):
+        """Tests the normal functionality of the function."""
+        # Executing the function
+        obs_markers, obs_segments = metaskat.read_segments(self.segments_fn)
+
+        # Checking the content of the markers
+        expected_marker = {
+            "MARKER_1": {"SEG_1"},
+            "MARKER_2": {"SEG_1"},
+            "MARKER_3": {"SEG_1", "SEG_2"},
+            "MARKER_4": {"SEG_2"},
+            "MARKER_5": {"SEG_3"},
+            "MARKER_6": {"SEG_3"},
+            "MARKER_7": {"SEG_3"},
+            "MARKER_8": {"SEG_3", "SEG_4"},
+        }
+        self.assertEqual(expected_marker, dict(obs_markers))
+
+        # Checking the content of the segments
+        expected_segments = {
+            "SEG_1": {"MARKER_1", "MARKER_2", "MARKER_3"},
+            "SEG_2": {"MARKER_3", "MARKER_4"},
+            "SEG_3": {"MARKER_5", "MARKER_6", "MARKER_7", "MARKER_8"},
+            "SEG_4": {"MARKER_8"},
+        }
+        self.assertEqual(expected_segments, dict(obs_segments))
+
+
 class BaseTestCaseContext_Compatibility:
 
     def __init__(self, test_case):
