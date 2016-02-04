@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from __future__ import print_function
+from __future__ import division
 
 import os
 import sys
@@ -9,10 +10,12 @@ import logging
 import argparse
 import subprocess
 from tempfile import mkdtemp
+from collections import defaultdict
 
 import yaml
 import numpy as np
 import pandas as pd
+from pyplink import PyPlink
 
 from rpy2 import rinterface
 import rpy2.robjects as robjects
@@ -34,7 +37,7 @@ skat = rimport("SKAT")
 
 __copyright__ = "Copyright 2016, Beaulieu-Saucier Pharmacogenomics Centre"
 __license__ = "MIT"
-__version__ = "0.1"
+__version__ = "0.2"
 
 
 # Logging configuration
@@ -63,7 +66,7 @@ def main():     # pragma: no cover
 
     # Running SKAT on individual cohorts
     execute_skat(cohort_information, args.gene_list, o_prefix=args.output,
-                 tmp_dir=tmp_dir)
+                 tmp_dir=tmp_dir, mac=args.mac)
 
     # Running the metaSKAT analysis
     execute_meta_analysis(cohort_information, args.gene_list, args.output)
@@ -73,7 +76,7 @@ def main():     # pragma: no cover
         shutil.rmtree(tmp_dir)
 
 
-def execute_skat(cohorts, genes, o_prefix, tmp_dir):
+def execute_skat(cohorts, genes, o_prefix, tmp_dir, mac=4):
     """Generating the SKAT meta files.
 
     Args:
@@ -81,6 +84,7 @@ def execute_skat(cohorts, genes, o_prefix, tmp_dir):
         genes (str): name of the file containing the SNP set (by gene).
         o_prefix (str): the output prefix.
         tmp_dir (str): the name of the temporary directory.
+        mac (int): the MAC threshold.
 
     """
     for cohort, cohort_info in cohorts.items():
@@ -95,9 +99,21 @@ def execute_skat(cohorts, genes, o_prefix, tmp_dir):
             tmp_dir=os.path.join(tmp_dir, cohort),
         )
 
+        # Saving the new data
+        cohort_info["new_prefix"] = plink_prefix
+        cohort_info["phenotype_data"] = pheno
+
+    # Getting the valid segment file (MAC > threshold)
+    valid_segments = os.path.join(o_prefix, "valid_segments.txt")
+    write_valid_segments(cohorts=cohorts, segments_fn=genes, mac=mac,
+                         output_fn=valid_segments)
+
+    for cohort, cohort_info in cohorts.items():
         # Getting the required information
         covariates = cohort_info["covariates"]
         pheno_name = cohort_info["phenotype"]
+        plink_prefix = cohort_info["new_prefix"]
+        pheno = cohort_info["phenotype_data"]
 
         # Creating the formula
         formula = rformula("{} ~ {}".format(
@@ -121,12 +137,106 @@ def execute_skat(cohorts, genes, o_prefix, tmp_dir):
         # Generating the meta files
         try:
             metaskat.Generate_Meta_Files(model, plink_prefix + ".bed",
-                                         plink_prefix + ".bim", genes, mssd,
-                                         minfo, pheno.shape[0],
+                                         plink_prefix + ".bim", valid_segments,
+                                         mssd, minfo, pheno.shape[0],
                                          File_Permu=robjects.r("NULL"))
         except Exception as e:
             logger.critical("problem with SKAT\n{}".format(e))
             sys.exit(1)
+
+
+def write_valid_segments(cohorts, segments_fn, mac, output_fn):
+    """Gets the valid segment according to MAC for each cohort.
+
+    Args:
+        cohorts (dict): the cohort information.
+        segments_fn (str): the name of the segment file.
+        mac (int): the MAC threshold.
+        output_fn (str): the name of the output file.
+
+    """
+    # First, we read the segments
+    segments_of_marker, markers_of_segment = read_segments(segments_fn)
+
+    # For each of the cohort, we compute the MAC for each segment. If it's
+    # higher than the threshold, we keep the segment.
+    segments_to_keep = None
+    for cohort, cohort_info in cohorts.items():
+        # Getting the MAC for each segment
+        segments_mac = compute_segment_mac(cohort_info["new_prefix"],
+                                           segments_of_marker)
+
+        # Keeping only the good segments
+        good_segments = {
+            segment for segment in segments_mac.keys()
+            if segments_mac[segment] > mac
+        }
+
+        # Checking with the other cohorts
+        if segments_to_keep is None:
+            segments_to_keep = good_segments
+        else:
+            segments_to_keep &= good_segments
+
+    # Writing the file
+    with open(output_fn, "w") as f:
+        for segment in sorted(segments_to_keep):
+            for marker in sorted(markers_of_segment[segment]):
+                print(segment, marker, sep="\t", file=f)
+
+
+def compute_segment_mac(prefix, segments_of_marker):
+    """Computes MAC values for each of the segments.
+
+    Args:
+        prefix (str): the prefix of the binary file.
+        segments_of_marker (dict): segments of each marker.
+
+    Returns:
+        dict: the MAC value for each segments.
+
+    """
+    mac_of_segment = defaultdict(int)
+
+    # Cycling through all markers
+    with PyPlink(prefix, "r") as bfile:
+        for marker, geno in bfile.iter_geno():
+            if marker in segments_of_marker:
+                for segment in segments_of_marker[marker]:
+                    good_geno = geno[geno != -1]
+                    mac = np.sum(good_geno)
+
+                    # Looking at the MAF to be sure it is well coded
+                    if mac / (len(good_geno) * 2) > 0.5:
+                        mac = np.sum(2 - good_geno)
+
+                    mac_of_segment[segment] += mac
+
+    return mac_of_segment
+
+
+def read_segments(segments_fn):
+    """Reads the segments from a file.
+
+    Args:
+        segments_fn (str): the name of the file containing the segments.
+
+    Returns:
+        tuple: first element is the segments for each marker, and second
+               element is the marker for each segments.
+
+    """
+    marker_segments = defaultdict(set)
+    segment_markers = defaultdict(set)
+    with open(segments_fn, "r") as f:
+        for line in f:
+            # The first column is the name of the segment, the second column is
+            # the name of the marker
+            segment_name, marker_name = line.rstrip("\r\n").split("\t")
+            marker_segments[marker_name].add(segment_name)
+            segment_markers[segment_name].add(marker_name)
+
+    return marker_segments, segment_markers
 
 
 def get_analysis_data(plink_prefix, pheno, covariates, fid, iid, pheno_fn,
@@ -247,14 +357,14 @@ def execute_command(command):   # pragma: no cover
                                 stderr=subprocess.PIPE)
     except OSError:
         logger.critical("plink: missing binary")
-        sys.exit(0)
+        sys.exit(1)
 
     try:
         stdout, stderr = proc.communicate()
 
     except:
         logger.critical("problem with plink extraction")
-        sys.exit(0)
+        sys.exit(1)
 
     if proc.returncode != 0:
         logger.critical("there was a problem with plink\n" + stderr.decode())
@@ -378,6 +488,11 @@ def check_args(args):
         logger.critical("{}: no such file".format(args.gene_list))
         sys.exit(1)
 
+    # Checking the MAC value
+    if args.mac < 0:
+        logger.critical("{}: invalid MAC value".format(args.mac))
+        sys.exit(1)
+
 
 def parse_args():
     """Parses the arguments and options."""
@@ -395,9 +510,15 @@ def parse_args():
     group.add_argument("-c", "--conf", required=True, metavar="YAML",
                        dest="yaml_file", help="The YAML file containing the "
                                               "information about the cohorts.")
+
+    # The segment options
+    group = parser.add_argument_group("SEGMENT OPTIONS")
     group.add_argument("-g", "--gene-list", required=True, metavar="FILE",
                        help="The gene list (with markers) required by "
                             "MetaSKAT")
+    group.add_argument("--mac", type=int, default=4, metavar="INT",
+                       help="The minimal MAC value to keep a segment "
+                            "[>%(default)d]")
 
     # The output options
     group = parser.add_argument_group("OUTPUT OPTIONS")

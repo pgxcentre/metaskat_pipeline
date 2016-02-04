@@ -53,6 +53,7 @@ class TestCheckArgs(unittest.TestCase):
         self.dummy = Dummy
         self.dummy.yaml_file = self.conf_fn
         self.dummy.gene_list = self.gene_fn
+        self.dummy.mac = 4
 
     def tearDown(self):
         """Finishes the tests."""
@@ -103,6 +104,20 @@ class TestCheckArgs(unittest.TestCase):
             ["CRITICAL:MetaSKAT Pipeline:{}: no such file".format(
                 self.conf_fn
             )],
+            cm_logs.output,
+        )
+
+    def test_low_mac(self):
+        """Tests when the MAC value is 0 or less."""
+        self.dummy.mac = -1
+        with self._my_compatibility_assertLogs(level="CRITICAL") as cm_logs:
+            with self.assertRaises(SystemExit) as cm:
+                metaskat.check_args(self.dummy)
+
+        # Checking the return code
+        self.assertNotEqual(0, cm.exception.code)
+        self.assertEqual(
+            ["CRITICAL:MetaSKAT Pipeline:-1: invalid MAC value"],
             cm_logs.output,
         )
 
@@ -601,21 +616,20 @@ class TestExecuteSKAT(unittest.TestCase):
     def test_normal_functionality(self):
         """Tests the normal functionality of the 'execute_skat' function."""
         # The cohort information
-        cohort_info = dict(
-            cohort_1=dict(
-                prefix=os.path.join(self.tmp_dir, "prefix_1"),
-                phenotype="PHENO",
-                covariates=["SEX", "AGE"],
-                phenotype_file=os.path.join(self.tmp_dir, "pheno"),
-            ),
-            cohort_2=dict(
-                prefix=os.path.join(self.tmp_dir, "prefix_2"),
-                phenotype="PHENO",
-                covariates=["SEX", "FOO"],
-                phenotype_file=os.path.join(self.tmp_dir, "pheno_2"),
-                family_id="fam_id",
-                individual_id="ind_id",
-            ),
+        cohort_info = collections.OrderedDict()
+        cohort_info["cohort_1"] = dict(
+            prefix=os.path.join(self.tmp_dir, "prefix_1"),
+            phenotype="PHENO",
+            covariates=["SEX", "AGE"],
+            phenotype_file=os.path.join(self.tmp_dir, "pheno"),
+        )
+        cohort_info["cohort_2"] = dict(
+            prefix=os.path.join(self.tmp_dir, "prefix_2"),
+            phenotype="PHENO",
+            covariates=["SEX", "FOO"],
+            phenotype_file=os.path.join(self.tmp_dir, "pheno_2"),
+            family_id="fam_id",
+            individual_id="ind_id",
         )
 
         # Creating the mocks and executing the function
@@ -626,45 +640,82 @@ class TestExecuteSKAT(unittest.TestCase):
 
         formula_env = FormulaEnv()
 
-        with patch.object(metaskat, "get_analysis_data",
-                          return_value=(prefix, self.cov)) as mock_get_data, \
-             patch.object(metaskat, "rformula",
-                          return_value=formula_env) as mock_rformula, \
-             patch.object(metaskat.skat, "SKAT_Null_Model",
-                          return_value="dummy_model") as mock_skat, \
-             patch.object(metaskat.metaskat, "Generate_Meta_Files",
-                          return_value=None) as mock_metaskat, \
-             patch.object(metaskat.robjects, "r",
-                          return_value="NULL") as mock_rob:
+        # What the get analysis will return
+        analysis_data_return = [
+            (prefix + "_1", self.cov[["SEX", "AGE", "PHENO"]]),
+            (prefix + "_2", self.cov[["SEX", "FOO", "PHENO"]]),
+        ]
+
+        # Executing the function
+        with patch.object(metaskat, "get_analysis_data") as mock_get_data, \
+                patch.object(metaskat, "write_valid_segments") as mock_write, \
+                patch.object(metaskat, "rformula") as mock_rformula, \
+                patch.object(metaskat.skat, "SKAT_Null_Model") as mock_skat, \
+                patch.object(metaskat.metaskat,
+                             "Generate_Meta_Files") as mock_meta, \
+                patch.object(metaskat.robjects, "r") as mock_robj:
+
+            # Changing what the mocks will do
+            mock_get_data.side_effect = analysis_data_return
+            mock_write.return_value = None
+            mock_rformula.return_value = formula_env
+            mock_skat.return_value = "dummy_model"
+            mock_meta.return_value = None
+            mock_robj.return_value = "NULL"
+
+            # Executing the function
             metaskat.execute_skat(
                 cohort_info,
                 os.path.join(self.tmp_dir, "genes"),
                 os.path.join(self.tmp_dir, "o_prefix"),
                 self.tmp_dir,
+                mac=6,
             )
 
         # Testing the first mock was called with the right argument
         self.assertEqual(2, mock_get_data.call_count)
-        mock_get_data.assert_any_call(
-            plink_prefix=os.path.join(self.tmp_dir, "prefix_1"),
-            pheno="PHENO",
-            covariates=["SEX", "AGE"],
-            pheno_fn=os.path.join(self.tmp_dir, "pheno"),
-            fid="FID",
-            iid="IID",
-            tmp_dir=os.path.join(self.tmp_dir, "cohort_1"),
-        )
-        mock_get_data.assert_any_call(
-            plink_prefix=os.path.join(self.tmp_dir, "prefix_2"),
-            pheno="PHENO",
-            covariates=["SEX", "FOO"],
-            pheno_fn=os.path.join(self.tmp_dir, "pheno_2"),
-            fid="fam_id",
-            iid="ind_id",
-            tmp_dir=os.path.join(self.tmp_dir, "cohort_2"),
-        )
+        mock_get_data.assert_has_calls([
+            call(
+                plink_prefix=os.path.join(self.tmp_dir, "prefix_1"),
+                pheno="PHENO",
+                covariates=["SEX", "AGE"],
+                pheno_fn=os.path.join(self.tmp_dir, "pheno"),
+                fid="FID",
+                iid="IID",
+                tmp_dir=os.path.join(self.tmp_dir, "cohort_1"),
+            ),
+            call(
+                plink_prefix=os.path.join(self.tmp_dir, "prefix_2"),
+                pheno="PHENO",
+                covariates=["SEX", "FOO"],
+                pheno_fn=os.path.join(self.tmp_dir, "pheno_2"),
+                fid="fam_id",
+                iid="ind_id",
+                tmp_dir=os.path.join(self.tmp_dir, "cohort_2"),
+            ),
+        ])
+
+        # Adding the prefix
+        cohort_info["cohort_1"]["new_prefix"] = prefix
+        cohort_info["cohort_2"]["new_prefix"] = prefix
+
+        # Adding the phenotypes
+        cohort_info["cohort_1"]["phenotype_data"] = self.cov[["SEX", "AGE",
+                                                              "PHENO"]]
+        cohort_info["cohort_2"]["phenotype_data"] = self.cov[["SEX", "FOO",
+                                                              "PHENO"]]
 
         # Testing the second mock was called with the right argument
+        self.assertEqual(1, mock_write.call_count)
+        mock_write.assert_called_once_with(
+            cohorts=cohort_info,
+            segments_fn=os.path.join(self.tmp_dir, "genes"),
+            mac=6,
+            output_fn=os.path.join(self.tmp_dir, "o_prefix",
+                                   "valid_segments.txt")
+        )
+
+        # Testing the third mock was called with the right argument
         self.assertEqual(2, mock_rformula.call_count)
         mock_rformula.assert_any_call(
             "cohort_1.PHENO ~ cohort_1.SEX + cohort_1.AGE"
@@ -698,46 +749,47 @@ class TestExecuteSKAT(unittest.TestCase):
         )
 
         # Checking that MetaSKAT was called correctly
-        self.assertEqual(2, mock_metaskat.call_count)
-        mock_metaskat.assert_any_call(
-            "dummy_model",
-            prefix + ".bed",
-            prefix + ".bim",
-            os.path.join(self.tmp_dir, "genes"),
-            os.path.join(self.tmp_dir, "o_prefix", "cohort_1.MSSD"),
-            os.path.join(self.tmp_dir, "o_prefix", "cohort_1.MInfo"),
-            10,
-            File_Permu="NULL",
-        )
-        mock_metaskat.assert_any_call(
-            "dummy_model",
-            prefix + ".bed",
-            prefix + ".bim",
-            os.path.join(self.tmp_dir, "genes"),
-            os.path.join(self.tmp_dir, "o_prefix", "cohort_2.MSSD"),
-            os.path.join(self.tmp_dir, "o_prefix", "cohort_2.MInfo"),
-            10,
-            File_Permu="NULL",
-        )
+        self.assertEqual(2, mock_meta.call_count)
+        mock_meta.assert_has_calls([
+            call(
+                "dummy_model",
+                prefix + "_1.bed",
+                prefix + "_1.bim",
+                os.path.join(self.tmp_dir, "o_prefix", "valid_segments.txt"),
+                os.path.join(self.tmp_dir, "o_prefix", "cohort_1.MSSD"),
+                os.path.join(self.tmp_dir, "o_prefix", "cohort_1.MInfo"),
+                10,
+                File_Permu="NULL",
+            ),
+            call(
+                "dummy_model",
+                prefix + "_2.bed",
+                prefix + "_2.bim",
+                os.path.join(self.tmp_dir, "o_prefix", "valid_segments.txt"),
+                os.path.join(self.tmp_dir, "o_prefix", "cohort_2.MSSD"),
+                os.path.join(self.tmp_dir, "o_prefix", "cohort_2.MInfo"),
+                10,
+                File_Permu="NULL",
+            ),
+        ])
 
     def test_with_metaskat_error(self):
         """Tests when there is a problem with MetaSKAT."""
         # The cohort information
-        cohort_info = dict(
-            cohort_1=dict(
-                prefix=os.path.join(self.tmp_dir, "prefix_1"),
-                phenotype="PHENO",
-                covariates=["SEX", "AGE"],
-                phenotype_file=os.path.join(self.tmp_dir, "pheno"),
-            ),
-            cohort_2=dict(
-                prefix=os.path.join(self.tmp_dir, "prefix_2"),
-                phenotype="PHENO",
-                covariates=["SEX", "FOO"],
-                phenotype_file=os.path.join(self.tmp_dir, "pheno_2"),
-                family_id="fam_id",
-                individual_id="ind_id",
-            ),
+        cohort_info = collections.OrderedDict()
+        cohort_info["cohort_1"] = dict(
+            prefix=os.path.join(self.tmp_dir, "prefix_1"),
+            phenotype="PHENO",
+            covariates=["SEX", "AGE"],
+            phenotype_file=os.path.join(self.tmp_dir, "pheno"),
+        )
+        cohort_info["cohort_2"] = dict(
+            prefix=os.path.join(self.tmp_dir, "prefix_2"),
+            phenotype="PHENO",
+            covariates=["SEX", "FOO"],
+            phenotype_file=os.path.join(self.tmp_dir, "pheno_2"),
+            family_id="fam_id",
+            individual_id="ind_id",
         )
 
         # Creating the mocks and executing the function
@@ -748,18 +800,30 @@ class TestExecuteSKAT(unittest.TestCase):
 
         formula_env = FormulaEnv()
 
-        with patch.object(metaskat, "get_analysis_data",
-                          return_value=(prefix, self.cov)) as mock_get_data, \
-             patch.object(metaskat, "rformula",
-                          return_value=formula_env) as mock_rformula, \
-             patch.object(metaskat.skat, "SKAT_Null_Model",
-                          return_value="dummy_model") as mock_skat, \
-             patch.object(metaskat.metaskat, "Generate_Meta_Files",
-                          return_value=None) as mock_metaskat, \
-             patch.object(metaskat.robjects, "r",
-                          side_effect=Exception("An error")) as mock_robj, \
-             self._my_compatibility_assertLogs(level="CRITICAL") as cm_logs, \
-             self.assertRaises(SystemExit) as cm:
+        # What the get analysis will return
+        analysis_data_return = [
+            (prefix + "_1", self.cov[["SEX", "AGE", "PHENO"]]),
+            (prefix + "_2", self.cov[["SEX", "FOO", "PHENO"]]),
+        ]
+
+        with patch.object(metaskat, "get_analysis_data") as mock_get_data, \
+                patch.object(metaskat, "write_valid_segments") as mock_write, \
+                patch.object(metaskat, "rformula") as mock_rformula, \
+                patch.object(metaskat.skat, "SKAT_Null_Model") as mock_skat, \
+                patch.object(metaskat.metaskat,
+                             "Generate_Meta_Files") as mock_meta, \
+                patch.object(metaskat.robjects, "r") as mock_robj, \
+                self._my_compatibility_assertLogs(level="CRITICAL") as logs, \
+                self.assertRaises(SystemExit) as cm:
+
+            # Changing what the mocks will do
+            mock_get_data.side_effect = analysis_data_return
+            mock_write.return_value = None
+            mock_rformula.return_value = formula_env
+            mock_skat.return_value = "dummy_model"
+            mock_meta.return_value = None
+            mock_robj.side_effect = Exception("An error occured")
+
             metaskat.execute_skat(
                 cohort_info,
                 os.path.join(self.tmp_dir, "genes"),
@@ -770,8 +834,8 @@ class TestExecuteSKAT(unittest.TestCase):
         # Checking the log
         self.assertNotEqual(0, cm.exception.code)
         self.assertEqual(
-            ["CRITICAL:MetaSKAT Pipeline:problem with SKAT\nAn error"],
-            cm_logs.output,
+            ["CRITICAL:MetaSKAT Pipeline:problem with SKAT\nAn error occured"],
+            logs.output,
         )
 
 
@@ -842,12 +906,13 @@ class TestExecuteMetaAnalysis(unittest.TestCase):
         # Creating a dummy value for the final cohort information
         with patch.object(metaskat.metaskat, "MetaSKAT_MSSD_ALL",
                           return_value=meta_result) as mock_metaskat, \
-             patch.object(metaskat.metaskat, "Open_MSSD_File_2Read",
-                          return_value=meta_cohort) as mock_file2read, \
-             patch.object(metaskat.np, "array",
-                          side_effect=list) as mock_np_array, \
-             patch.object(metaskat.robjects, "r",
-                          return_value="NULL") as mock_rob:
+                patch.object(metaskat.metaskat, "Open_MSSD_File_2Read",
+                             return_value=meta_cohort) as mock_file2read, \
+                patch.object(metaskat.np, "array",
+                             side_effect=list) as mock_np_array, \
+                patch.object(metaskat.robjects, "r",
+                             return_value="NULL") as mock_rob:
+
             metaskat.execute_meta_analysis(
                 cohort_info,
                 os.path.join(self.tmp_dir, "genes"),
@@ -902,6 +967,281 @@ class TestExecuteMetaAnalysis(unittest.TestCase):
             call(os.path.join(self.tmp_dir, "cohort_3.MetaInfo.txt"),
                  sep="\t", quote=False, row_names=False),
         ])
+
+
+class TestReadSegments(unittest.TestCase):
+    """Tests the 'read_segments' function."""
+    def setUp(self):
+        """Setup the tests."""
+        self.tmp_dir = mkdtemp(prefix="metaskat_test_")
+
+        # Writing the segment file
+        content = (
+            "SEG_1\tMARKER_1\n"
+            "SEG_1\tMARKER_2\n"
+            "SEG_1\tMARKER_3\n"
+            "SEG_2\tMARKER_3\n"
+            "SEG_2\tMARKER_4\n"
+            "SEG_3\tMARKER_5\n"
+            "SEG_3\tMARKER_6\n"
+            "SEG_3\tMARKER_7\n"
+            "SEG_3\tMARKER_8\n"
+            "SEG_4\tMARKER_8\n"
+        )
+        self.segments_fn = os.path.join(self.tmp_dir, "segment")
+        with open(self.segments_fn, "w") as f:
+            f.write(content)
+
+    def tearDown(self):
+        """Finishes the tests."""
+        # Cleaning the temporary directory
+        shutil.rmtree(self.tmp_dir)
+
+    def _my_compatibility_assertLogs(self, logger=None, level=None):
+        """Compatibility 'assertLogs' function for Python < 3.4."""
+        if hasattr(self, "assertLogs"):
+            return self.assertLogs(logger, level)
+
+        else:
+            return AssertLogsContext_Compatibility(self, logger, level)
+
+    def test_normal_functionality(self):
+        """Tests the normal functionality of the function."""
+        # Executing the function
+        obs_markers, obs_segments = metaskat.read_segments(self.segments_fn)
+
+        # Checking the content of the markers
+        expected_marker = {
+            "MARKER_1": {"SEG_1"},
+            "MARKER_2": {"SEG_1"},
+            "MARKER_3": {"SEG_1", "SEG_2"},
+            "MARKER_4": {"SEG_2"},
+            "MARKER_5": {"SEG_3"},
+            "MARKER_6": {"SEG_3"},
+            "MARKER_7": {"SEG_3"},
+            "MARKER_8": {"SEG_3", "SEG_4"},
+        }
+        self.assertEqual(expected_marker, dict(obs_markers))
+
+        # Checking the content of the segments
+        expected_segments = {
+            "SEG_1": {"MARKER_1", "MARKER_2", "MARKER_3"},
+            "SEG_2": {"MARKER_3", "MARKER_4"},
+            "SEG_3": {"MARKER_5", "MARKER_6", "MARKER_7", "MARKER_8"},
+            "SEG_4": {"MARKER_8"},
+        }
+        self.assertEqual(expected_segments, dict(obs_segments))
+
+
+class TestComputeSegmentMac(unittest.TestCase):
+    """Tests the 'compute_segment_mac' function."""
+    def setUp(self):
+        """Setup the tests."""
+        self.tmp_dir = mkdtemp(prefix="metaskat_test_")
+
+        self.segments_of_marker = {
+            "MARKER_1": {"SEG_1"},
+            "MARKER_2": {"SEG_1"},
+            "MARKER_3": {"SEG_1", "SEG_2"},
+            "MARKER_4": {"SEG_2"},
+            "MARKER_5": {"SEG_3"},
+            "MARKER_6": {"SEG_3"},
+            "MARKER_7": {"SEG_3"},
+            "MARKER_8": {"SEG_3", "SEG_4"},
+        }
+
+    def tearDown(self):
+        """Finishes the tests."""
+        # Cleaning the temporary directory
+        shutil.rmtree(self.tmp_dir)
+
+    def _my_compatibility_assertLogs(self, logger=None, level=None):
+        """Compatibility 'assertLogs' function for Python < 3.4."""
+        if hasattr(self, "assertLogs"):
+            return self.assertLogs(logger, level)
+
+        else:
+            return AssertLogsContext_Compatibility(self, logger, level)
+
+    def test_normal_functionality(self):
+        """Tests the normal functionality of the function."""
+        # What will be returned by PyPlink
+        class DummyPyPlink(object):
+            def iter_geno(self):
+                return (
+                    ("MARKER_1", np.array([0, 0, 1, 0, 1, 2, 0, 1, 1, 0]),),
+                    ("MARKER_2", np.array([0, 1, 0, 0, 1, 0, 0, 0, 0, 0]),),
+                    ("MARKER_3", np.array([0, 1, 1, 1, 0, 0, 0, 0, 0, 2]),),
+                    ("MARKER_4", np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),),
+                    ("MARKER_5", np.array([0, 0, 1, 0, 1, 1, 0, 0, 1, 0]),),
+                    ("MARKER_6", np.array([2, 2, 1, 2, 1, 0, 2, 1, 1, 2]),),
+                    ("MARKER_7", np.array([0, 0, 1, 1, 1, 0, 0, 2, 1, 0]),),
+                    ("MARKER_8", np.array([1, 0, 0, 0, 0, 0, 0, 1, 0, 0]),),
+                    ("MARKER_9", np.array([0, 1, 1, 0, 0, 0, 0, 1, 0, 2]),),
+                )
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args, **kwargs):
+                pass
+
+        prefix = os.path.join(self.tmp_dir, "prefix")
+        with patch.object(metaskat, "PyPlink") as mock_pyplink:
+            # Changing that the mock returns
+            mock_pyplink.return_value = DummyPyPlink()
+
+            # Executing the function
+            observed = metaskat.compute_segment_mac(prefix,
+                                                    self.segments_of_marker)
+
+        # Checking that PyPlink was called
+        self.assertEqual(1, mock_pyplink.call_count)
+        mock_pyplink.assert_called_once_with(prefix, "r")
+
+        # Checking the results
+        expected = {
+            "SEG_1": 13,
+            "SEG_2": 5,
+            "SEG_3": 18,
+            "SEG_4": 2,
+        }
+        self.assertEqual(expected, dict(observed))
+
+
+class TestWriteValidSegments(unittest.TestCase):
+    """Tests the 'write_valid_segments' function."""
+    def setUp(self):
+        """Setup the tests."""
+        self.tmp_dir = mkdtemp(prefix="metaskat_test_")
+
+        # The segment for each marker
+        self.segments_of_marker = {
+            "MARKER_1": {"SEG_1"},
+            "MARKER_2": {"SEG_1"},
+            "MARKER_3": {"SEG_1", "SEG_2"},
+            "MARKER_4": {"SEG_2"},
+            "MARKER_5": {"SEG_3"},
+            "MARKER_6": {"SEG_3"},
+            "MARKER_7": {"SEG_3"},
+            "MARKER_8": {"SEG_3", "SEG_4"},
+            "MARKER_9": {"SEG_4", "SEG_5"},
+        }
+
+        # The markers in each segment
+        self.markers_of_segment = {
+            "SEG_1": {"MARKER_1", "MARKER_2", "MARKER_3"},
+            "SEG_2": {"MARKER_3", "MARKER_4"},
+            "SEG_3": {"MARKER_5", "MARKER_6", "MARKER_7", "MARKER_8"},
+            "SEG_4": {"MARKER_8", "MARKER_9"},
+            "SEG_5": {"MARKER_9"}
+        }
+
+        # The MAC values for cohort 1
+        self.mac_values_cohort_1 = {
+            "SEG_1": 13,
+            "SEG_2": 5,
+            "SEG_3": 18,
+            "SEG_4": 2,
+        }
+
+        # The MAC values for cohort 2
+        self.mac_values_cohort_2 = {
+            "SEG_1": 16,
+            "SEG_2": 4,
+            "SEG_3": 13,
+            "SEG_4": 8,
+        }
+
+        # The MAC values for cohort 2
+        self.mac_values_cohort_3 = {
+            "SEG_1": 13,
+            "SEG_2": 11,
+            "SEG_3": 9,
+            "SEG_4": 13,
+        }
+
+        # The cohort information
+        self.cohort_info = collections.OrderedDict()
+        self.cohort_info["cohort_1"] = dict(
+            new_prefix=os.path.join(self.tmp_dir, "new_prefix_1"),
+        )
+        self.cohort_info["cohort_2"] = dict(
+            new_prefix=os.path.join(self.tmp_dir, "new_prefix_2"),
+        )
+        self.cohort_info["cohort_3"] = dict(
+            new_prefix=os.path.join(self.tmp_dir, "new_prefix_3"),
+        )
+
+        # The segment file name
+        self.segments_fn = os.path.join(self.tmp_dir, "segments")
+
+    def tearDown(self):
+        """Finishes the tests."""
+        # Cleaning the temporary directory
+        shutil.rmtree(self.tmp_dir)
+
+    def _my_compatibility_assertLogs(self, logger=None, level=None):
+        """Compatibility 'assertLogs' function for Python < 3.4."""
+        if hasattr(self, "assertLogs"):
+            return self.assertLogs(logger, level)
+
+        else:
+            return AssertLogsContext_Compatibility(self, logger, level)
+
+    def test_normal_functionality(self):
+        """Tests the normal functionality of the function."""
+        # The results will be in this file
+        output_fn = os.path.join(self.tmp_dir, "new_segments.txt")
+
+        with patch.object(metaskat, "read_segments") as mock_read_seg, \
+                patch.object(metaskat, "compute_segment_mac") as mock_mac:
+            # Changing what the mock will return
+            mock_mac.side_effect = (self.mac_values_cohort_1,
+                                    self.mac_values_cohort_2,
+                                    self.mac_values_cohort_3)
+            mock_read_seg.return_value = (self.segments_of_marker,
+                                          self.markers_of_segment)
+
+            # Executing the function
+            metaskat.write_valid_segments(
+                cohorts=self.cohort_info,
+                segments_fn=self.segments_fn,
+                mac=4,
+                output_fn=output_fn,
+            )
+
+        # Checking what has been called with read_segments
+        self.assertEqual(1, mock_read_seg.call_count)
+        mock_read_seg.assert_called_once_with(self.segments_fn)
+
+        # Checking what has been called with compute_segment_mac
+        self.assertEqual(3, mock_mac.call_count)
+        mock_mac.assert_has_calls([
+            call(os.path.join(self.tmp_dir, "new_prefix_1"),
+                              self.segments_of_marker),
+            call(os.path.join(self.tmp_dir, "new_prefix_2"),
+                              self.segments_of_marker),
+            call(os.path.join(self.tmp_dir, "new_prefix_3"),
+                              self.segments_of_marker),
+        ])
+
+        # Checking the output file
+        self.assertTrue(os.path.isfile(output_fn))
+
+        # Checking the file content
+        with open(output_fn, "r") as f:
+            observed = f.read()
+        expected = (
+            "SEG_1\tMARKER_1\n"
+            "SEG_1\tMARKER_2\n"
+            "SEG_1\tMARKER_3\n"
+            "SEG_3\tMARKER_5\n"
+            "SEG_3\tMARKER_6\n"
+            "SEG_3\tMARKER_7\n"
+            "SEG_3\tMARKER_8\n"
+        )
+        self.assertEqual(expected, observed)
 
 
 class BaseTestCaseContext_Compatibility:
