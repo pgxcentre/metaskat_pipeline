@@ -37,7 +37,7 @@ skat = rimport("SKAT")
 
 __copyright__ = "Copyright 2016, Beaulieu-Saucier Pharmacogenomics Centre"
 __license__ = "MIT"
-__version__ = "0.1"
+__version__ = "0.2"
 
 
 # Logging configuration

@@ -28,7 +28,7 @@ Using either `python` or `python3`:
 
 ```console
 $ python run_metaskat.py --help
-usage: run_metaskat.py [-h] [-v] -c YAML -g FILE [-o DIR]
+usage: run_metaskat.py [-h] [-v] -c YAML -g FILE [--mac INT] [-o DIR]
 
 Automatically execute MetaSKAT on multiple cohorts (using rpy2).
 
@@ -39,8 +39,11 @@ optional arguments:
 INPUT OPTIONS:
   -c YAML, --conf YAML  The YAML file containing the information about the
                         cohorts.
+
+SEGMENT OPTIONS:
   -g FILE, --gene-list FILE
                         The gene list (with markers) required by MetaSKAT
+  --mac INT             The minimal MAC value to keep a segment [>4]
 
 OUTPUT OPTIONS:
   -o DIR, --output DIR  The output directory [metaskat_output]
