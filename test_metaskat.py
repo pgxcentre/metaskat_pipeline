@@ -153,10 +153,16 @@ class TestRead_Conf(unittest.TestCase):
         with open(self.conf_fn, "w") as f:
             f.write(content)
 
+        # Disabling INFO logging
+        logging.disable(logging.INFO)
+
     def tearDown(self):
         """Finishes the tests."""
         # Cleaning the temporary directory
         shutil.rmtree(self.tmp_dir)
+
+        # Enabling logging
+        logging.disable(logging.NOTSET)
 
     def _my_compatibility_assertLogs(self, logger=None, level=None):
         """Compatibility 'assertLogs' function for Python < 3.4."""
@@ -333,10 +339,16 @@ class TestGetAnalysisData(unittest.TestCase):
             columns=["FID", "IID", "AGE", "SEX", "PHENO"]
         )
 
+        # Disabling INFO logging
+        logging.disable(logging.INFO)
+
     def tearDown(self):
         """Finishes the tests."""
         # Cleaning the temporary directory
         shutil.rmtree(self.tmp_dir)
+
+        # Enabling logging
+        logging.disable(logging.NOTSET)
 
     def _my_compatibility_assertLogs(self, logger=None, level=None):
         """Compatibility 'assertLogs' function for Python < 3.4."""
@@ -600,10 +612,16 @@ class TestExecuteSKAT(unittest.TestCase):
             columns=["FID", "IID", "AGE", "SEX", "FOO", "PHENO"]
         ).set_index(["FID", "IID"], verify_integrity=True)
 
+        # Disabling INFO logging
+        logging.disable(logging.INFO)
+
     def tearDown(self):
         """Finishes the tests."""
         # Cleaning the temporary directory
         shutil.rmtree(self.tmp_dir)
+
+        # Enabling logging
+        logging.disable(logging.NOTSET)
 
     def _my_compatibility_assertLogs(self, logger=None, level=None):
         """Compatibility 'assertLogs' function for Python < 3.4."""
@@ -845,10 +863,16 @@ class TestExecuteMetaAnalysis(unittest.TestCase):
         """Setup the tests."""
         self.tmp_dir = mkdtemp(prefix="metaskat_test_")
 
+        # Disabling INFO logging
+        logging.disable(logging.INFO)
+
     def tearDown(self):
         """Finishes the tests."""
         # Cleaning the temporary directory
         shutil.rmtree(self.tmp_dir)
+
+        # Enabling logging
+        logging.disable(logging.NOTSET)
 
     def _my_compatibility_assertLogs(self, logger=None, level=None):
         """Compatibility 'assertLogs' function for Python < 3.4."""
@@ -992,10 +1016,16 @@ class TestReadSegments(unittest.TestCase):
         with open(self.segments_fn, "w") as f:
             f.write(content)
 
+        # Disabling INFO logging
+        logging.disable(logging.INFO)
+
     def tearDown(self):
         """Finishes the tests."""
         # Cleaning the temporary directory
         shutil.rmtree(self.tmp_dir)
+
+        # Enabling logging
+        logging.disable(logging.NOTSET)
 
     def _my_compatibility_assertLogs(self, logger=None, level=None):
         """Compatibility 'assertLogs' function for Python < 3.4."""
@@ -1176,10 +1206,16 @@ class TestWriteValidSegments(unittest.TestCase):
         # The segment file name
         self.segments_fn = os.path.join(self.tmp_dir, "segments")
 
+        # Disabling INFO logging
+        logging.disable(logging.INFO)
+
     def tearDown(self):
         """Finishes the tests."""
         # Cleaning the temporary directory
         shutil.rmtree(self.tmp_dir)
+
+        # Enabling logging
+        logging.disable(logging.NOTSET)
 
     def _my_compatibility_assertLogs(self, logger=None, level=None):
         """Compatibility 'assertLogs' function for Python < 3.4."""
