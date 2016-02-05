@@ -5,6 +5,7 @@ from __future__ import division
 
 import os
 import sys
+import shlex
 import shutil
 import logging
 import argparse
@@ -37,7 +38,7 @@ skat = rimport("SKAT")
 
 __copyright__ = "Copyright 2016, Beaulieu-Saucier Pharmacogenomics Centre"
 __license__ = "MIT"
-__version__ = "0.2"
+__version__ = "0.3"
 
 
 # Logging configuration
@@ -54,6 +55,12 @@ def main():     # pragma: no cover
     args = parse_args()
     check_args(args)
 
+    logger.info("This is {} version {}".format(os.path.basename(sys.argv[0]),
+                                               __version__))
+    logger.info("Parameters: {}".format(
+        " ".join(shlex.quote(part) for part in sys.argv[1:])
+    ))
+
     # Creating the output directory, if required
     if not os.path.isdir(args.output):
         os.mkdir(args.output)
@@ -62,6 +69,7 @@ def main():     # pragma: no cover
     tmp_dir = mkdtemp(prefix="metaskat_tmp_", dir=args.output)
 
     # Reading the YAML configuration
+    logger.info("Reading configuration file")
     cohort_information = read_cohort_configuration(args.yaml_file)
 
     # Running SKAT on individual cohorts
@@ -89,6 +97,7 @@ def execute_skat(cohorts, genes, o_prefix, tmp_dir, mac=4):
     """
     for cohort, cohort_info in cohorts.items():
         # Getting the plink file prefix (str) and the phenotype (DataFrame)
+        logger.info("{}: preparing genotypes and phenotypes".format(cohort))
         plink_prefix, pheno = get_analysis_data(
             plink_prefix=cohort_info["prefix"],
             pheno=cohort_info["phenotype"],
@@ -104,11 +113,14 @@ def execute_skat(cohorts, genes, o_prefix, tmp_dir, mac=4):
         cohort_info["phenotype_data"] = pheno
 
     # Getting the valid segment file (MAC > threshold)
+    logger.info("Getting valid segments (MAC > {})".format(mac))
     valid_segments = os.path.join(o_prefix, "valid_segments.txt")
     write_valid_segments(cohorts=cohorts, segments_fn=genes, mac=mac,
                          output_fn=valid_segments)
 
+    logger.info("Generating SKAT statistics")
     for cohort, cohort_info in cohorts.items():
+        logger.info("  - {}".format(cohort))
         # Getting the required information
         covariates = cohort_info["covariates"]
         pheno_name = cohort_info["phenotype"]
@@ -157,12 +169,17 @@ def write_valid_segments(cohorts, segments_fn, mac, output_fn):
     """
     # First, we read the segments
     segments_of_marker, markers_of_segment = read_segments(segments_fn)
+    logger.info("  - read {:,d} segments with {:,d} markers "
+                "[ {} ]".format(len(markers_of_segment),
+                                len(segments_of_marker), segments_fn))
 
     # For each of the cohort, we compute the MAC for each segment. If it's
     # higher than the threshold, we keep the segment.
     segments_to_keep = None
     for cohort, cohort_info in cohorts.items():
         # Getting the MAC for each segment
+        logger.info("  - {}: fetching valid segments "
+                    "[ {} ]".format(cohort, cohort_info["new_prefix"]))
         segments_mac = compute_segment_mac(cohort_info["new_prefix"],
                                            segments_of_marker)
 
@@ -171,6 +188,7 @@ def write_valid_segments(cohorts, segments_fn, mac, output_fn):
             segment for segment in segments_mac.keys()
             if segments_mac[segment] > mac
         }
+        logger.info("    - {:,d} valid segments".format(len(good_segments)))
 
         # Checking with the other cohorts
         if segments_to_keep is None:
@@ -179,6 +197,9 @@ def write_valid_segments(cohorts, segments_fn, mac, output_fn):
             segments_to_keep &= good_segments
 
     # Writing the file
+    logger.info("  - writing {:,d} valid segments in common with {:,d} cohort"
+                "[ {} ]".format(len(segments_to_keep), len(cohorts),
+                                output_fn))
     with open(output_fn, "w") as f:
         for segment in sorted(segments_to_keep):
             for marker in sorted(markers_of_segment[segment]):
@@ -263,9 +284,13 @@ def get_analysis_data(plink_prefix, pheno, covariates, fid, iid, pheno_fn,
                       names=["fid", "iid", "father", "mother", "gender",
                              "status"])
     fam = fam.set_index(["fid", "iid"], verify_integrity=True)
+    logger.info("  - read {:,d} samples from FAM file "
+                "[ {} ]".format(fam.shape[0], plink_prefix + ".fam"))
 
     # Reading the phenotype and covariates
     phenotypes = pd.read_csv(pheno_fn, sep="\t")
+    logger.info("  - read {:,d} samples from phenotype and covariates "
+                "file [ {} ]".format(phenotypes.shape[0], pheno_fn))
 
     # Checking that we have all the required column in the phenotype file
     req_col = [fid, iid, pheno] + covariates
@@ -283,6 +308,7 @@ def get_analysis_data(plink_prefix, pheno, covariates, fid, iid, pheno_fn,
     # Finding the intersection between phenotype and sample file
     same_samples = fam.index.intersection(phenotypes.index)
     nb_same = len(same_samples.tolist())
+    logger.info("  - {:,d} sample in common".format(nb_same))
 
     if nb_same == 0:
         logger.critical("{} vs {}: no sample in common".format(
@@ -305,6 +331,8 @@ def get_analysis_data(plink_prefix, pheno, covariates, fid, iid, pheno_fn,
     if not os.path.isdir(tmp_dir):
         os.mkdir(tmp_dir)
 
+    logger.info("  - extracting {:,d} samples from "
+                "genotype file [ {} ]".format(nb_same, plink_prefix))
     # Extracting required samples using plink
     new_prefix = extract_plink(plink_prefix, os.path.join(tmp_dir, "subset"),
                                same_samples.tolist())
@@ -384,6 +412,8 @@ def execute_meta_analysis(cohorts, genes, out_dir):
     meta_cohort_info = metaskat.Open_MSSD_File_2Read(mssd_files, minfo_files)
 
     # Computing the stats
+    logger.info("Generating MetaSKAT results (homo) for "
+                "{:,d} cohorts".format(len(cohort_names)))
     meta_hom = metaskat.MetaSKAT_MSSD_ALL(**{
         "Cohort.Info": meta_cohort_info,
         "combined.weight": True,
@@ -395,9 +425,13 @@ def execute_meta_analysis(cohorts, genes, out_dir):
         "MAF.cutoff": 5,
     })
 
-    meta_hom.to_csvfile(os.path.join(out_dir, "metaSKAT.homo.txt"),
-                        quote=False, sep="\t", row_names=False, col_names=True)
+    o_fn = os.path.join(out_dir, "metaSKAT.homo.txt")
+    logger.info("  - results in [ {} ]".format(o_fn))
+    meta_hom.to_csvfile(o_fn, quote=False, sep="\t", row_names=False,
+                        col_names=True)
 
+    logger.info("Generating MetaSKAT results (hetero) for "
+                "{:,d} cohorts".format(len(cohort_names)))
     meta_het = metaskat.MetaSKAT_MSSD_ALL(**{
         "Cohort.Info": meta_cohort_info,
         "combined.weight": True,
@@ -409,10 +443,13 @@ def execute_meta_analysis(cohorts, genes, out_dir):
         "MAF.cutoff": 5,
     })
 
-    meta_het.to_csvfile(os.path.join(out_dir, "metaSKAT.hetero.txt"),
-                        quote=False, sep="\t", row_names=False, col_names=True)
+    o_fn = os.path.join(out_dir, "metaSKAT.hetero.txt")
+    logger.info("  - results in [ {} ]".format(o_fn))
+    meta_het.to_csvfile(o_fn, quote=False, sep="\t", row_names=False,
+                        col_names=True)
 
     # Printing final results per cohort
+    logger.info("Writing cohort information to file")
     each_cohort_info = meta_cohort_info[
         meta_cohort_info.names.index("EachInfo")
     ]
@@ -474,6 +511,7 @@ def read_cohort_configuration(fn):
         if not os.path.isfile(pheno_file):
             logger.critical("{}: no such file".format(pheno_file))
             sys.exit(1)
+        logger.info("  - {}".format(cohort))
 
     return conf
 
@@ -530,4 +568,8 @@ def parse_args():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.info("Program canceled by user")
+        sys.exit()
